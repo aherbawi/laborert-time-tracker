@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "User Settings",
+      "description": "User specific settings and configuration.",
+      "type": "object",
+      "properties": {
+        "payPeriodStartDay": { "type": "number" },
+        "otDays": { "type": "array", "items": { "type": "number" } },
+        "defaultStartTime": { "type": "string" },
+        "defaultEndTime": { "type": "string" },
+        "defaultBreakMinutes": { "type": "number", "type": ["number", "string"] }
+      },
+      "required": ["payPeriodStartDay", "otDays", "defaultStartTime", "defaultEndTime", "defaultBreakMinutes"]
+    },
+    "Log": {
+      "title": "Time Log",
+      "description": "A single time log entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "breakMinutes": { "type": "number", "type": ["number", "string"] },
+        "totalHours": { "type": "number" },
+        "overtimeHours": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "date", "startTime", "endTime", "breakMinutes", "totalHours"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/UserSettings" },
+      "description": "Stores user settings. ID will be 'config'."
+    },
+    "/users/{userId}/logs/{logId}": {
+      "schema": { "$ref": "#/entities/Log" },
+      "description": "Stores time logs for a user."
+    }
+  }
+}

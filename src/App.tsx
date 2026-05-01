@@ -1,7 +1,57 @@
-import { useState, useEffect, useMemo, MouseEvent, ChangeEvent } from 'react';
-import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2 } from 'lucide-react';
+import { useState, useEffect, useMemo, MouseEvent, ChangeEvent, FormEvent } from 'react';
+import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkLog } from './types';
+import { auth, db, signInWithGoogle, logout } from './firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, query, where, writeBatch } from 'firebase/firestore';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 const getLocalDateString = (date = new Date()) => {
   const y = date.getFullYear();
@@ -16,6 +66,7 @@ const parseLocalDate = (dateStr: string) => {
 };
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark';
@@ -69,6 +120,69 @@ export default function App() {
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
+  // Auth State
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return unsub;
+  }, []);
+
+  // Firebase Log Subscription
+  useEffect(() => {
+    if (!user) return;
+    const logsRef = collection(db, 'users', user.uid, 'logs');
+    const unsub = onSnapshot(logsRef, (snapshot) => {
+      const dbLogs: WorkLog[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        dbLogs.push({
+          id: data.id,
+          date: data.date,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          breakMinutes: typeof data.breakMinutes === 'string' ? parseInt(data.breakMinutes) : data.breakMinutes,
+          totalHours: data.totalHours,
+          overtimeHours: data.overtimeHours,
+          timestamp: new Date(data.createdAt || Date.now()).getTime(),
+        });
+      });
+      dbLogs.sort((a, b) => b.date.localeCompare(a.date));
+      setLogs(dbLogs);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/logs`));
+    return unsub;
+  }, [user]);
+
+  // Firebase Settings Subscription
+  useEffect(() => {
+    if (!user) return;
+    const settingsRef = doc(db, 'users', user.uid, 'settings', 'config');
+    const unsub = onSnapshot(settingsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.defaultStartTime) setDefaultStartTime(data.defaultStartTime);
+        if (data.defaultEndTime) setDefaultEndTime(data.defaultEndTime);
+        if (data.defaultBreakMinutes) setDefaultBreakMinutes(data.defaultBreakMinutes.toString());
+        if (data.payPeriodStartDay) setPayPeriodStartDay(data.payPeriodStartDay);
+        if (data.otDays) setOtDays(data.otDays);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
+    return unsub;
+  }, [user]);
+
+  // Sync settings back to Firebase
+  useEffect(() => {
+    if (!user) return;
+    const settingsRef = doc(db, 'users', user.uid, 'settings', 'config');
+    setDoc(settingsRef, {
+      defaultStartTime,
+      defaultEndTime,
+      defaultBreakMinutes: parseInt(defaultBreakMinutes) || 0,
+      payPeriodStartDay,
+      otDays
+    }, { merge: true }).catch(error => handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/settings/config`));
+  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays]);
+
   useEffect(() => {
     localStorage.setItem('defaultStartTime', defaultStartTime);
   }, [defaultStartTime]);
@@ -100,8 +214,9 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Load history on mount
+  // Load history on mount or local changes
   useEffect(() => {
+    if (user) return; // Ignore local logs when logged in 
     const saved = localStorage.getItem('work_logs');
     if (saved) {
       try {
@@ -110,12 +225,44 @@ export default function App() {
         console.error("Failed to parse logs", e);
       }
     }
-  }, []);
+  }, [user]);
 
-  // Save history when logs change
+  // Save history when logs change locally
   useEffect(() => {
-    localStorage.setItem('work_logs', JSON.stringify(logs));
-  }, [logs]);
+    if (!user) {
+      localStorage.setItem('work_logs', JSON.stringify(logs));
+    }
+  }, [logs, user]);
+
+  const syncLocalToFirebase = async () => {
+    if (!user) return;
+    try {
+      const localLogsStr = localStorage.getItem('work_logs');
+      if (localLogsStr) {
+        const localLogs: WorkLog[] = JSON.parse(localLogsStr);
+        const batch = writeBatch(db);
+        for (const log of localLogs) {
+          const logRef = doc(db, 'users', user.uid, 'logs', log.id);
+          batch.set(logRef, {
+            id: log.id,
+            userId: user.uid,
+            date: log.date,
+            startTime: log.startTime,
+            endTime: log.endTime,
+            breakMinutes: Number(log.breakMinutes),
+            totalHours: log.totalHours,
+            overtimeHours: log.overtimeHours,
+            createdAt: new Date().toISOString()
+          }, { merge: true });
+        }
+        await batch.commit();
+        alert('Local logs synced to Firebase!');
+      }
+    } catch(err) {
+      console.error(err);
+      alert('Failed to sync. Check console.');
+    }
+  };
 
   const calculateHours = (start: string, end: string, brk: number) => {
     const [sH, sM] = start.split(':').map(Number);
@@ -126,7 +273,7 @@ export default function App() {
     return Math.max(0, (endMinutes - startMinutes - brk) / 60);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const brk = parseInt(breakMinutes) || 0;
     const total = calculateHours(startTime, endTime, brk);
     const parsedDate = parseLocalDate(selectedDate);
@@ -135,15 +282,32 @@ export default function App() {
     const ot = Math.max(0, total - standard);
     
     if (editingLogId) {
-      setLogs(prev => prev.map(log => 
-        log.id === editingLogId 
-          ? { ...log, date: selectedDate, startTime, endTime, breakMinutes: brk, totalHours: Number(total.toFixed(2)), overtimeHours: Number(ot.toFixed(2)) }
-          : log
-      ).sort((a, b) => b.date.localeCompare(a.date)));
+      const logData = {
+          date: selectedDate,
+          startTime,
+          endTime,
+          breakMinutes: brk,
+          totalHours: Number(total.toFixed(2)),
+          overtimeHours: Number(ot.toFixed(2))
+      };
+      
+      if (user) {
+        try {
+          const logRef = doc(db, 'users', user.uid, 'logs', editingLogId);
+          await setDoc(logRef, { ...logData, userId: user.uid, id: editingLogId }, { merge: true });
+        } catch(error) {
+          handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}/logs/${editingLogId}`);
+        }
+      } else {
+        setLogs(prev => prev.map(log => 
+          log.id === editingLogId ? { ...log, ...logData } : log
+        ).sort((a, b) => b.date.localeCompare(a.date)));
+      }
       setEditingLogId(null);
     } else {
-      const newLog: WorkLog = {
-        id: crypto.randomUUID(),
+      const newId = crypto.randomUUID();
+      const newLogData = {
+        id: newId,
         date: selectedDate,
         startTime,
         endTime,
@@ -152,7 +316,17 @@ export default function App() {
         overtimeHours: Number(ot.toFixed(2)),
         timestamp: Date.now()
       };
-      setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+
+      if (user) {
+        try {
+          const logRef = doc(db, 'users', user.uid, 'logs', newId);
+          await setDoc(logRef, { ...newLogData, userId: user.uid, createdAt: new Date().toISOString() });
+        } catch(error) {
+           handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}/logs/${newId}`);
+        }
+      } else {
+        setLogs(prev => [newLogData, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+      }
     }
     
     setBreakMinutes(defaultBreakMinutes);
@@ -167,9 +341,18 @@ export default function App() {
     setBreakMinutes(log.breakMinutes.toString());
   };
 
-  const deleteLog = (id: string, e: MouseEvent) => {
+  const deleteLog = async (id: string, e: MouseEvent) => {
     e.stopPropagation();
-    setLogs(prev => prev.filter(log => log.id !== id));
+    if (user) {
+      try {
+        const logRef = doc(db, 'users', user.uid, 'logs', id);
+        await deleteDoc(logRef);
+      } catch(error) {
+        handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/logs/${id}`);
+      }
+    } else {
+      setLogs(prev => prev.filter(log => log.id !== id));
+    }
   };
 
   const exportCSV = () => {
@@ -194,12 +377,12 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  const importCSV = (e: ChangeEvent<HTMLInputElement>) => {
+  const importCSV = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
       const lines = text.split('\n').filter(line => line.trim() !== '');
       if (lines.length <= 1) return; // Only header or empty
@@ -224,16 +407,37 @@ export default function App() {
         }
       }
       
-      setLogs(prev => {
-         const newLogsList = [...prev];
-         for (const ilog of importedLogs) {
-             if (!newLogsList.some(l => l.date === ilog.date && l.startTime === ilog.startTime && l.endTime === ilog.endTime)) {
-                 newLogsList.push(ilog);
-             }
+      if (user) {
+         try {
+           const batch = writeBatch(db);
+           for (const ilog of importedLogs) {
+              const matchingLocal = logs.find(l => l.date === ilog.date && l.startTime === ilog.startTime && l.endTime === ilog.endTime);
+              if (!matchingLocal) {
+                 const logRef = doc(db, 'users', user.uid, 'logs', ilog.id);
+                 batch.set(logRef, {
+                    ...ilog,
+                    userId: user.uid,
+                    createdAt: new Date().toISOString()
+                 });
+              }
+           }
+           await batch.commit();
+           alert('Import to Firebase successful!');
+         } catch(error) {
+            handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/logs (batch)`);
          }
-         return newLogsList.sort((a, b) => b.date.localeCompare(a.date));
-      });
-      alert('Import successful!');
+      } else {
+        setLogs(prev => {
+           const newLogsList = [...prev];
+           for (const ilog of importedLogs) {
+               if (!newLogsList.some(l => l.date === ilog.date && l.startTime === ilog.startTime && l.endTime === ilog.endTime)) {
+                   newLogsList.push(ilog);
+               }
+           }
+           return newLogsList.sort((a, b) => b.date.localeCompare(a.date));
+        });
+        alert('Import successful!');
+      }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -280,18 +484,43 @@ export default function App() {
       <div className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
         
         {/* Header */}
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg">
-              <Clock size={24} />
+        <header className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center justify-between w-full sm:w-auto">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg">
+                <Clock size={24} />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight">Work Tracker</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Manage your shifts</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Work Tracker</h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Manage your shifts</p>
-            </div>
+            
+            {(view === 'entry' || view === 'settings' || view === 'export') && (
+              <button 
+                  onClick={() => setView('calendar')}
+                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex sm:hidden items-center gap-1 text-sm font-medium"
+              >
+                  <ArrowLeft size={18} />
+              </button>
+            )}
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
+            {!user ? (
+               <button onClick={signInWithGoogle} className="p-2 bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-sm gap-2 whitespace-nowrap">
+                  <LogIn size={16} /> Sign In
+               </button>
+            ) : (
+               <>
+                 <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sync Local to Cloud">
+                    <RefreshCw size={20} />
+                 </button>
+                 <button onClick={logout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sign Out">
+                    <LogOut size={20} />
+                 </button>
+               </>
+            )}
             <button 
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
@@ -336,10 +565,10 @@ export default function App() {
             {(view === 'entry' || view === 'settings' || view === 'export') && (
               <button 
                   onClick={() => setView('calendar')}
-                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                  className="hidden sm:flex p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors items-center gap-2 text-sm font-medium"
               >
                   <ArrowLeft size={18} />
-                  <span className="hidden md:inline">Back</span>
+                  <span>Back</span>
               </button>
             )}
           </div>
@@ -765,10 +994,10 @@ export default function App() {
                     </div>
                 </div>
 
-                <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex items-center justify-end relative z-10">
+                <div className="mt-8 pt-6 sm:mt-10 sm:pt-8 border-t border-slate-50 dark:border-slate-700/50 flex flex-col sm:flex-row items-center justify-center sm:justify-end relative z-10 w-full">
                   <button 
                     onClick={() => setView('calendar')}
-                    className="group inline-flex items-center justify-center gap-3 px-10 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform"
+                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-4 sm:py-5 bg-indigo-600 text-white font-black rounded-2xl sm:rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform text-sm sm:text-base"
                   >
                     Done
                   </button>
