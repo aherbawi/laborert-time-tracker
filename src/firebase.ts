@@ -11,7 +11,15 @@ export const googleProvider = new GoogleAuthProvider();
 export const signInWithGoogle = async () => {
     try {
         await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.code === 'auth/popup-closed-by-user') {
+            console.log("Sign in popup was closed by the user.");
+            // We can resolve gracefully
+            return;
+        }
+        if (error?.code === 'auth/unauthorized-domain') {
+            alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console.");
+        }
         console.error("Error signing in with Google", error);
         throw error;
     }
