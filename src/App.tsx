@@ -37,20 +37,20 @@ export default function App() {
   });
   
   const [defaultStartTime, setDefaultStartTime] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('defaultStartTime') || '08:00';
-    return '08:00';
+    if (typeof window !== 'undefined') return localStorage.getItem('defaultStartTime') || '07:30';
+    return '07:30';
   });
   const [defaultEndTime, setDefaultEndTime] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('defaultEndTime') || '17:00';
-    return '17:00';
+    if (typeof window !== 'undefined') return localStorage.getItem('defaultEndTime') || '16:30';
+    return '16:30';
   });
   const [defaultBreakMinutes, setDefaultBreakMinutes] = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('defaultBreakMinutes') || '60';
     return '60';
   });
   const [payPeriodStartDay, setPayPeriodStartDay] = useState(() => {
-    if (typeof window !== 'undefined') return parseInt(localStorage.getItem('payPeriodStartDay') || '1', 10);
-    return 1;
+    if (typeof window !== 'undefined') return parseInt(localStorage.getItem('payPeriodStartDay') || '19', 10);
+    return 19;
   });
 
   const [startTime, setStartTime] = useState(defaultStartTime);
