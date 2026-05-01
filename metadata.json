@@ -1,0 +1,6 @@
+{
+  "name": "Laborer Time Tracker",
+  "description": "A simple and efficient tool for laborers to track their daily work hours, including break times and overnight shift support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
