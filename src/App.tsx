@@ -390,12 +390,28 @@ export default function App() {
 
               {/* Simple Stats */}
               {(() => {
-                  let startDayToUse = payPeriodStartDay;
-                  // Handle cases where the month doesn't have the start day (e.g., Feb 30) - JS Date handles this somewhat, but let's just make it robust.
-                  const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), startDayToUse);
+                  const now = new Date();
+                  const isCurrentMonth = currentMonth.getFullYear() === now.getFullYear() && currentMonth.getMonth() === now.getMonth();
+                  const refD = parseLocalDate(selectedDate);
+                  const isSelectedInView = refD.getFullYear() === currentMonth.getFullYear() && refD.getMonth() === currentMonth.getMonth();
+                  
+                  const targetDate = isCurrentMonth ? now : (isSelectedInView ? refD : new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 15));
+                  
+                  let cycleStartMonth = targetDate.getMonth();
+                  let cycleStartYear = targetDate.getFullYear();
+
+                  if (targetDate.getDate() < payPeriodStartDay) {
+                      cycleStartMonth -= 1;
+                      if (cycleStartMonth < 0) {
+                          cycleStartMonth = 11;
+                          cycleStartYear -= 1;
+                      }
+                  }
+
+                  const d = new Date(cycleStartYear, cycleStartMonth, payPeriodStartDay);
                   const cycleStartDateStr = getLocalDateString(d);
                   
-                  const dEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, startDayToUse);
+                  const dEnd = new Date(cycleStartYear, cycleStartMonth + 1, payPeriodStartDay);
                   const cycleEndDateStr = getLocalDateString(dEnd);
                   
                   const endDisplayD = new Date(dEnd.getTime() - 86400000);
