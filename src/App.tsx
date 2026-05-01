@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, MouseEvent } from 'react';
-import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload } from 'lucide-react';
+import { useState, useEffect, useMemo, MouseEvent, ChangeEvent } from 'react';
+import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkLog } from './types';
 
@@ -52,11 +52,22 @@ export default function App() {
     if (typeof window !== 'undefined') return parseInt(localStorage.getItem('payPeriodStartDay') || '19', 10);
     return 19;
   });
+  const [otDays, setOtDays] = useState<number[]>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('otDays');
+      if (stored) return JSON.parse(stored);
+      const oldStored = localStorage.getItem('otDay');
+      if (oldStored) return [parseInt(oldStored, 10)];
+      return [5, 6];
+    }
+    return [5, 6];
+  });
 
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [endTime, setEndTime] = useState(defaultEndTime);
   const [breakMinutes, setBreakMinutes] = useState<string>(defaultBreakMinutes);
   const [logs, setLogs] = useState<WorkLog[]>([]);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('defaultStartTime', defaultStartTime);
@@ -73,6 +84,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('payPeriodStartDay', payPeriodStartDay.toString());
   }, [payPeriodStartDay]);
+
+  useEffect(() => {
+    localStorage.setItem('otDays', JSON.stringify(otDays));
+  }, [otDays]);
 
   // Apply dark mode theme
   useEffect(() => {
@@ -114,22 +129,42 @@ export default function App() {
   const handleSave = () => {
     const brk = parseInt(breakMinutes) || 0;
     const total = calculateHours(startTime, endTime, brk);
-    const standard = calculateHours(defaultStartTime, defaultEndTime, parseInt(defaultBreakMinutes) || 0);
+    const parsedDate = parseLocalDate(selectedDate);
+    const isOtDay = otDays.includes(parsedDate.getDay());
+    const standard = isOtDay ? 0 : calculateHours(defaultStartTime, defaultEndTime, parseInt(defaultBreakMinutes) || 0);
     const ot = Math.max(0, total - standard);
     
-    const newLog: WorkLog = {
-      id: crypto.randomUUID(),
-      date: selectedDate,
-      startTime,
-      endTime,
-      breakMinutes: brk,
-      totalHours: Number(total.toFixed(2)),
-      overtimeHours: Number(ot.toFixed(2)),
-      timestamp: Date.now()
-    };
-    setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    if (editingLogId) {
+      setLogs(prev => prev.map(log => 
+        log.id === editingLogId 
+          ? { ...log, date: selectedDate, startTime, endTime, breakMinutes: brk, totalHours: Number(total.toFixed(2)), overtimeHours: Number(ot.toFixed(2)) }
+          : log
+      ).sort((a, b) => b.date.localeCompare(a.date)));
+      setEditingLogId(null);
+    } else {
+      const newLog: WorkLog = {
+        id: crypto.randomUUID(),
+        date: selectedDate,
+        startTime,
+        endTime,
+        breakMinutes: brk,
+        totalHours: Number(total.toFixed(2)),
+        overtimeHours: Number(ot.toFixed(2)),
+        timestamp: Date.now()
+      };
+      setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    }
+    
     setBreakMinutes(defaultBreakMinutes);
     setView('calendar');
+  };
+
+  const handleEditLog = (log: WorkLog) => {
+    setEditingLogId(log.id);
+    setSelectedDate(log.date);
+    setStartTime(log.startTime);
+    setEndTime(log.endTime);
+    setBreakMinutes(log.breakMinutes.toString());
   };
 
   const deleteLog = (id: string, e: MouseEvent) => {
@@ -159,7 +194,7 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  const importCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importCSV = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -242,7 +277,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      <div className="max-w-xl mx-auto p-4 md:p-8 space-y-6">
+      <div className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
         
         {/* Header */}
         <header className="flex items-center justify-between">
@@ -345,6 +380,7 @@ export default function App() {
                   {daysInMonth.map((dateStr, idx) => {
                     const isToday = dateStr === getLocalDateString();
                     const isCycleStart = dateStr && parseLocalDate(dateStr).getDate() === payPeriodStartDay;
+                    const isOtDay = dateStr ? otDays.includes(parseLocalDate(dateStr).getDay()) : false;
                     const dayLogs = dateStr ? logsByDate[dateStr] : [];
                     const totalForDay = dayLogs?.reduce((sum, l) => sum + l.totalHours, 0);
 
@@ -353,31 +389,39 @@ export default function App() {
                         key={idx} 
                         onClick={() => dateStr && openDate(dateStr)}
                         className={`
-                            relative h-20 md:h-24 p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors
+                            relative h-16 sm:h-20 md:h-24 p-1 sm:p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors
                             ${!dateStr ? 'bg-slate-50/50 dark:bg-slate-800/50 text-transparent' : ''}
                             ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-900/20' : ''}
+                            ${isOtDay && !isToday && dateStr ? 'bg-amber-50/40 dark:bg-amber-900/20' : ''}
                         `}
                       >
                         {dateStr && (
                           <>
-                            <span className={`text-sm font-semibold ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                              {parseLocalDate(dateStr).getDate()}
-                            </span>
+                            <div className="flex justify-between items-start">
+                              <span className={`text-sm font-semibold ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                                {parseLocalDate(dateStr).getDate()}
+                              </span>
+                              {isOtDay && (
+                                <span className="text-[9px] font-black uppercase text-amber-500/70 dark:text-amber-400/50 tracking-wider">
+                                  OT
+                                </span>
+                              )}
+                            </div>
                             {isCycleStart && (
                                 <div className="absolute top-2 right-2 text-amber-500" title="Cycle Start">
                                     <Flag size={14} className="fill-amber-500" />
                                 </div>
                             )}
                             {dayLogs && dayLogs.length > 0 && (
-                              <div className="mt-1 space-y-1">
-                                <div className="text-[10px] font-bold text-indigo-500 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/50 px-1 rounded inline-block">
-                                  {totalForDay.toFixed(1)}h
-                                </div>
-                                <div className="flex gap-0.5 flex-wrap">
-                                  {dayLogs.map((_, i) => (
-                                    <div key={i} className="w-1.5 h-1.5 bg-indigo-400 dark:bg-indigo-500 rounded-full" />
-                                  ))}
-                                </div>
+                              <div className="mt-0.5 sm:mt-1 flex flex-col gap-0.5 sm:gap-1">
+                                <span className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-1 sm:px-1.5 py-0 sm:py-0.5 rounded sm:rounded-md inline-block w-fit leading-tight min-w-[20px] text-center">
+                                  {totalForDay.toFixed(1)}<span className="hidden sm:inline">h</span>
+                                </span>
+                                {dayLogs.some(l => l.overtimeHours) && (
+                                  <span className="text-[8px] sm:text-[10px] font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-0.5 sm:px-1 py-0 sm:py-0.5 rounded inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight">
+                                    {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="hidden sm:inline">h OT</span>
+                                  </span>
+                                )}
                               </div>
                             )}
                           </>
@@ -421,6 +465,17 @@ export default function App() {
                       .reduce((sum, l) => sum + l.totalHours, 0)
                       .toFixed(1);
 
+                  const otThisCycle = logs
+                      .filter(l => l.date >= cycleStartDateStr && l.date < cycleEndDateStr)
+                      .reduce((sum, l) => sum + (l.overtimeHours || 0), 0)
+                      .toFixed(1);
+
+                  const daysWorkedThisCycle = new Set(
+                      logs
+                          .filter(l => l.date >= cycleStartDateStr && l.date < cycleEndDateStr)
+                          .map(l => l.date)
+                  ).size;
+
                   return (
                       <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 dark:shadow-none relative overflow-hidden">
                         <div className="relative z-10">
@@ -431,6 +486,14 @@ export default function App() {
                                 {totalThisCycle}
                                 <span className="text-sm ml-2 font-normal opacity-70">Hours</span>
                             </p>
+                            <div className="flex items-center gap-6 mt-3 border-t border-indigo-500/50 pt-3 flex-wrap">
+                                <p className="text-indigo-200 font-bold text-sm">
+                                    Overtime Total: {otThisCycle} Hours
+                                </p>
+                                <p className="text-indigo-200 font-bold text-sm">
+                                    Total Work Days: {daysWorkedThisCycle}
+                                </p>
+                            </div>
                         </div>
                         <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                             <History size={80} />
@@ -497,25 +560,51 @@ export default function App() {
 
                 <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
                   <div className="text-center md:text-left">
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] font-black">Day Total</p>
-                    <div className="flex items-baseline justify-center md:justify-start gap-2">
-                        <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">
-                          {calculateHours(startTime, endTime, parseInt(breakMinutes) || 0).toFixed(2)} <span className="text-lg font-bold">Hrs</span>
-                        </p>
-                        {calculateHours(startTime, endTime, parseInt(breakMinutes) || 0) > calculateHours(defaultStartTime, defaultEndTime, parseInt(defaultBreakMinutes) || 0) && (
-                          <span className="text-sm font-bold text-amber-500">
-                            (+{(calculateHours(startTime, endTime, parseInt(breakMinutes) || 0) - calculateHours(defaultStartTime, defaultEndTime, parseInt(defaultBreakMinutes) || 0)).toFixed(2)} OT)
-                          </span>
-                        )}
-                    </div>
+                    {(() => {
+                        const totalTemp = calculateHours(startTime, endTime, parseInt(breakMinutes) || 0);
+                        const isOtDayPreview = otDays.includes(parseLocalDate(selectedDate).getDay());
+                        const standardTemp = isOtDayPreview ? 0 : calculateHours(defaultStartTime, defaultEndTime, parseInt(defaultBreakMinutes) || 0);
+                        const otTemp = Math.max(0, totalTemp - standardTemp);
+                        
+                        return (
+                            <>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] font-black">Day Total</p>
+                                <div className="flex items-baseline justify-center md:justify-start gap-2">
+                                    <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">
+                                      {totalTemp.toFixed(2)} <span className="text-lg font-bold">Hrs</span>
+                                    </p>
+                                    {otTemp > 0 && (
+                                      <span className="text-sm font-bold text-amber-500">
+                                        (+{otTemp.toFixed(2)} OT)
+                                      </span>
+                                    )}
+                                </div>
+                            </>
+                        );
+                    })()}
                   </div>
-                  <button 
-                    onClick={handleSave}
-                    className="group w-full md:w-auto inline-flex items-center justify-center gap-3 px-10 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform"
-                  >
-                    <PlusCircle size={24} />
-                    Add Entry
-                  </button>
+                  <div className="flex flex-col gap-3 w-full md:w-auto">
+                    <button 
+                      onClick={handleSave}
+                      className="group w-full md:w-auto inline-flex items-center justify-center gap-3 px-10 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform"
+                    >
+                      {editingLogId ? <Edit2 size={24} /> : <PlusCircle size={24} />}
+                      {editingLogId ? 'Update Entry' : 'Add Entry'}
+                    </button>
+                    {editingLogId && (
+                      <button 
+                        onClick={() => {
+                          setEditingLogId(null);
+                          setStartTime(defaultStartTime);
+                          setEndTime(defaultEndTime);
+                          setBreakMinutes(defaultBreakMinutes);
+                        }}
+                        className="text-sm font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -525,25 +614,33 @@ export default function App() {
                   <h4 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 px-2">Logs for this day</h4>
                   <div className="space-y-3">
                     {logsByDate[selectedDate].map((log) => (
-                      <div key={log.id} className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-100 dark:border-slate-700 flex items-center justify-between shadow-sm dark:shadow-none">
-                        <div className="flex items-center gap-4 text-left">
-                          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center font-black">
+                      <div key={log.id} className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 shadow-sm dark:shadow-none">
+                        <div className="flex items-center gap-3 sm:gap-4 text-left">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center font-black text-sm sm:text-base">
                             {log.totalHours}
                           </div>
-                          <div>
-                            <p className="font-bold text-slate-800 dark:text-slate-100">{log.startTime} - {log.endTime}</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">{log.startTime} - {log.endTime}</p>
+                            <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
                               {log.breakMinutes}m break
                               {log.overtimeHours ? ` • ${log.overtimeHours}h OT` : ''}
                             </p>
                           </div>
                         </div>
-                        <button 
-                            onClick={(e) => deleteLog(log.id, e)}
-                            className="p-3 text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-                        >
-                          <Trash2 size={20} />
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                              onClick={() => handleEditLog(log)}
+                              className="p-2 sm:p-3 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
+                          >
+                            <Edit2 size={18} className="sm:w-5 sm:h-5" />
+                          </button>
+                          <button 
+                              onClick={(e) => deleteLog(log.id, e)}
+                              className="p-2 sm:p-3 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                          >
+                            <Trash2 size={18} className="sm:w-5 sm:h-5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -585,10 +682,10 @@ export default function App() {
                     </div>
                 </div>
 
-                <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex items-center justify-end relative z-10">
+                <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex items-center justify-center sm:justify-end relative z-10">
                   <button 
                     onClick={exportCSV}
-                    className="group inline-flex items-center justify-center gap-3 px-10 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform"
+                    className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-4 sm:py-5 bg-indigo-600 text-white font-black rounded-2xl sm:rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform text-sm sm:text-base"
                   >
                     <Download size={20} /> Download CSV
                   </button>
@@ -646,6 +743,25 @@ export default function App() {
                         onChange={(e) => setPayPeriodStartDay(parseInt(e.target.value) || 1)}
                         className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
                         />
+                    </div>
+                    <div className="space-y-2 text-left">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">OT Days (Weekends)</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
+                                <label key={day} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent has-[:checked]:border-indigo-500/30 has-[:checked]:bg-indigo-50/50 dark:has-[:checked]:bg-indigo-900/20">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={otDays.includes(index)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) setOtDays(prev => [...prev, index]);
+                                            else setOtDays(prev => prev.filter(d => d !== index));
+                                        }}
+                                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{day.substring(0, 3)}</span>
+                                </label>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
