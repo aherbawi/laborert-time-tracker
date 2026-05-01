@@ -5,5 +5,6 @@ export interface WorkLog {
   endTime: string;
   breakMinutes: number;
   totalHours: number;
+  overtimeHours?: number;
   timestamp: number;
 }
