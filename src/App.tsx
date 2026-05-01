@@ -58,9 +58,9 @@ export default function App() {
       if (stored) return JSON.parse(stored);
       const oldStored = localStorage.getItem('otDay');
       if (oldStored) return [parseInt(oldStored, 10)];
-      return [5, 6];
+      return [5];
     }
-    return [5, 6];
+    return [5];
   });
 
   const [startTime, setStartTime] = useState(defaultStartTime);
