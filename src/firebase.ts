@@ -8,9 +8,12 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRIT
 export const auth = getAuth();
 export const googleProvider = new GoogleAuthProvider();
 
-// Initialize redirect result handling
-getRedirectResult(auth).catch((error) => {
-    console.error("Error with redirect sign-in:", error);
+getRedirectResult(auth).then((result) => {
+    if (result) {
+        console.log("Successfully logged in via redirect");
+    }
+}).catch((error) => {
+    console.error("Error carefully checking redirect result:", error);
     if (error?.code === 'auth/unauthorized-domain') {
         alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console Settings -> Authentication -> Authorized domains.");
     }
@@ -19,8 +22,8 @@ getRedirectResult(auth).catch((error) => {
 export const signInWithGoogle = async () => {
     try {
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        // If we are on mobile, use redirect instead of popup
         if (isMobile) {
+            // Mobile devices often block popups or have issues with third-party cookie access in popups.
             await signInWithRedirect(auth, googleProvider);
         } else {
             await signInWithPopup(auth, googleProvider);
@@ -28,11 +31,10 @@ export const signInWithGoogle = async () => {
     } catch (error: any) {
         if (error?.code === 'auth/popup-closed-by-user') {
             console.log("Sign in popup was closed by the user.");
-            // We can resolve gracefully
             return;
         }
         if (error?.code === 'auth/unauthorized-domain') {
-            alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console.");
+            alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console Settings -> Authentication -> Authorized domains.");
         }
         console.error("Error signing in with Google", error);
         throw error;
