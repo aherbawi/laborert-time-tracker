@@ -33,8 +33,14 @@ interface FirestoreErrorInfo {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  if (errorMessage.includes('Firestore shutting down') || errorMessage.includes('client is offline')) {
+      return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -235,6 +241,16 @@ export default function App() {
     }
   }, [logs, user]);
 
+  const handleLogout = async () => {
+    try {
+      setLogs([]);
+      localStorage.removeItem('work_logs');
+      await logout();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const syncLocalToFirebase = async () => {
     if (!user) return;
     try {
@@ -257,6 +273,7 @@ export default function App() {
           }, { merge: true });
         }
         await batch.commit();
+        localStorage.removeItem('work_logs');
         alert('Local logs synced to Firebase!');
       }
     } catch(err) {
@@ -482,7 +499,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      <div className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
+      <main className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
         
         {/* Header */}
         <header className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -500,6 +517,7 @@ export default function App() {
             {(view === 'entry' || view === 'settings' || view === 'export') && (
               <button 
                   onClick={() => setView('calendar')}
+                  aria-label="Back to calendar"
                   className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex sm:hidden items-center gap-1 text-sm font-medium"
               >
                   <ArrowLeft size={18} />
@@ -517,7 +535,7 @@ export default function App() {
                  <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sync Local to Cloud">
                     <RefreshCw size={20} />
                  </button>
-                 <button onClick={logout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sign Out">
+                 <button onClick={handleLogout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sign Out">
                     <LogOut size={20} />
                  </button>
                </>
@@ -526,6 +544,7 @@ export default function App() {
                 onClick={() => setIsDarkMode(!isDarkMode)}
                 className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
                 title="Toggle Dark Mode"
+                aria-label="Toggle Dark Mode"
             >
                 {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
@@ -542,6 +561,7 @@ export default function App() {
                     onClick={() => document.getElementById('csv-import')?.click()}
                     className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
                     title="Import CSV"
+                    aria-label="Import CSV"
                 >
                     <Upload size={20} />
                 </button>
@@ -549,6 +569,7 @@ export default function App() {
                     onClick={() => setView('export')}
                     className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
                     title="Export CSV"
+                    aria-label="Export CSV"
                 >
                     <Download size={20} />
                 </button>
@@ -559,6 +580,7 @@ export default function App() {
                   onClick={() => setView('settings')}
                   className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
                   title="Settings"
+                  aria-label="Settings"
               >
                   <Settings size={20} />
               </button>
@@ -586,13 +608,13 @@ export default function App() {
             >
               {/* Month Selector */}
               <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                <button aria-label="Previous Month" onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
                   <ChevronLeft size={20} />
                 </button>
                 <h2 className="text-lg font-bold capitalize">
                   {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                 </h2>
-                <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                <button aria-label="Next Month" onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
                   <ChevronRight size={20} />
                 </button>
               </div>
@@ -752,11 +774,12 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
                   <div className="space-y-2 text-left">
-                    <label className="flex items-center text-sm font-medium text-slate-700 dark:text-slate-300 gap-2">
+                    <label htmlFor="breakMinutes" className="flex items-center text-sm font-medium text-slate-700 dark:text-slate-300 gap-2">
                       <Coffee size={16} className="text-indigo-500 dark:text-indigo-400" />
                       Break (Minutes)
                     </label>
                     <input 
+                      id="breakMinutes"
                       type="number" 
                       placeholder="0"
                       value={breakMinutes}
@@ -767,8 +790,9 @@ export default function App() {
 
                   <div className="space-y-4">
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Time</label>
+                        <label htmlFor="startTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Time</label>
                         <input 
+                        id="startTime"
                         type="time" 
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
@@ -777,8 +801,9 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">End Time</label>
+                        <label htmlFor="endTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">End Time</label>
                         <input 
+                        id="endTime"
                         type="time" 
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
@@ -860,13 +885,15 @@ export default function App() {
                         <div className="flex items-center justify-end gap-2">
                           <button 
                               onClick={() => handleEditLog(log)}
-                              className="p-2 sm:p-3 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
+                              aria-label="Edit"
+                              className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
                           >
                             <Edit2 size={18} className="sm:w-5 sm:h-5" />
                           </button>
                           <button 
                               onClick={(e) => deleteLog(log.id, e)}
-                              className="p-2 sm:p-3 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
+                              aria-label="Delete"
+                              className="p-2 sm:p-3 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
                           >
                             <Trash2 size={18} className="sm:w-5 sm:h-5" />
                           </button>
@@ -892,8 +919,9 @@ export default function App() {
 
                 <div className="space-y-6 relative z-10">
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Date</label>
+                        <label htmlFor="exportStartDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Date</label>
                         <input 
+                        id="exportStartDate"
                         type="date" 
                         value={exportStartDate}
                         onChange={(e) => setExportStartDate(e.target.value)}
@@ -902,8 +930,9 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">End Date</label>
+                        <label htmlFor="exportEndDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">End Date</label>
                         <input 
+                        id="exportEndDate"
                         type="date" 
                         value={exportEndDate}
                         onChange={(e) => setExportEndDate(e.target.value)}
@@ -933,12 +962,11 @@ export default function App() {
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 md:p-8 border border-slate-100 dark:border-slate-700 relative overflow-hidden">
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
                     <Settings className="text-indigo-500 dark:text-indigo-400" /> Settings
-                </h3>
-
-                <div className="space-y-6 relative z-10">
+                </h3>                <div className="space-y-6 relative z-10">
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Start Time</label>
+                        <label htmlFor="defaultStartTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Start Time</label>
                         <input 
+                        id="defaultStartTime"
                         type="time" 
                         value={defaultStartTime}
                         onChange={(e) => setDefaultStartTime(e.target.value)}
@@ -947,8 +975,9 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Default End Time</label>
+                        <label htmlFor="defaultEndTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default End Time</label>
                         <input 
+                        id="defaultEndTime"
                         type="time" 
                         value={defaultEndTime}
                         onChange={(e) => setDefaultEndTime(e.target.value)}
@@ -956,8 +985,9 @@ export default function App() {
                         />
                     </div>
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Break (Minutes)</label>
+                        <label htmlFor="defaultBreakMinutes" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Break (Minutes)</label>
                         <input 
+                        id="defaultBreakMinutes"
                         type="number" 
                         value={defaultBreakMinutes}
                         onChange={(e) => setDefaultBreakMinutes(e.target.value)}
@@ -965,8 +995,9 @@ export default function App() {
                         />
                     </div>
                     <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Cycle Start Day (1-31)</label>
+                        <label htmlFor="payPeriodStartDay" className="text-sm font-medium text-slate-700 dark:text-slate-300">Cycle Start Day (1-31)</label>
                         <input 
+                        id="payPeriodStartDay"
                         type="number" 
                         min="1" max="31"
                         value={payPeriodStartDay}
@@ -981,6 +1012,7 @@ export default function App() {
                                 <label key={day} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent has-[:checked]:border-indigo-500/30 has-[:checked]:bg-indigo-50/50 dark:has-[:checked]:bg-indigo-900/20">
                                     <input 
                                         type="checkbox" 
+                                        name="otDays"
                                         checked={otDays.includes(index)}
                                         onChange={(e) => {
                                             if (e.target.checked) setOtDays(prev => [...prev, index]);
@@ -1007,7 +1039,7 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </main>
     </div>
   );
 }
