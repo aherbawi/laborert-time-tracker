@@ -132,7 +132,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const logsRef = collection(db, 'users', user.uid, 'logs');
-    const unsub = onSnapshot(logsRef, (snapshot) => {
+    const logsQuery = query(logsRef, where('userId', '==', user.uid));
+    const unsub = onSnapshot(logsQuery, (snapshot) => {
       const dbLogs: WorkLog[] = [];
       snapshot.forEach(doc => {
         const data = doc.data();

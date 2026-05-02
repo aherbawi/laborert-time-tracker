@@ -1,10 +1,10 @@
 {
-  "projectId": "gen-lang-client-0083907641",
-  "appId": "1:557981471653:web:35872432d46fa6d5028e4c",
-  "apiKey": "AIzaSyA-G-nFQiezyCnYfyy3J0mn0gQ-JHoLkIo",
-  "authDomain": "gen-lang-client-0083907641.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-afcb9624-838f-4211-ad14-221404d0ee03",
-  "storageBucket": "gen-lang-client-0083907641.firebasestorage.app",
-  "messagingSenderId": "557981471653",
-  "measurementId": ""
+  "projectId": "work-tracker-herbawi",
+  "appId": "1:396005992450:web:0122275509466675b61f1b",
+  "apiKey": "AIzaSyCOZjJyph_LYlFdABm1v5nd-Hu62u6DkCI",
+  "authDomain": "work-tracker-herbawi.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "work-tracker-herbawi.firebasestorage.app",
+  "messagingSenderId": "396005992450",
+  "measurementId": "G-6WQ24RD8VM"
 }

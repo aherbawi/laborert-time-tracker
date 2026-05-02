@@ -1,7 +1,7 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-  
     match /{document=**} {
       allow read, write: if false;
     }
@@ -13,50 +13,42 @@ service cloud.firestore {
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
 
-    // User Collection Rules
+    function isValidUserSettingsUpdate(data) {
+      return (!data.keys().hasAny(['payPeriodStartDay']) || data.payPeriodStartDay is number)
+          && (!data.keys().hasAny(['otDays']) || (data.otDays is list && data.otDays.size() <= 7))
+          && (!data.keys().hasAny(['defaultStartTime']) || (data.defaultStartTime is string && data.defaultStartTime.size() <= 10))
+          && (!data.keys().hasAny(['defaultEndTime']) || (data.defaultEndTime is string && data.defaultEndTime.size() <= 10))
+          && (!data.keys().hasAny(['defaultBreakMinutes']) || (data.defaultBreakMinutes is number || data.defaultBreakMinutes is string));
+    }
+
+    function isValidLog(data, userId) {
+      return data.keys().hasAll(['id', 'userId', 'date', 'startTime', 'endTime', 'breakMinutes', 'totalHours'])
+          && data.id is string && data.id.size() <= 128
+          && data.userId == userId
+          && data.date is string && data.date.size() <= 20
+          && data.startTime is string && data.startTime.size() <= 10
+          && data.endTime is string && data.endTime.size() <= 10
+          && (data.breakMinutes is number || data.breakMinutes is string)
+          && (data.totalHours is number || data.totalHours is string)
+          && (!data.keys().hasAny(['timestamp']) || data.timestamp is number)
+          && (!data.keys().hasAny(['createdAt']) || data.createdAt is string)
+          && (!data.keys().hasAny(['overtimeHours']) || data.overtimeHours is number || data.overtimeHours is string);
+    }
+
     match /users/{userId} {
-      
-      // Settings subcollection
       match /settings/{settingId} {
-        allow get: if isSignedIn() && request.auth.uid == userId;
-        allow list: if false; // only get is needed for settings
-        allow write: if isSignedIn() && request.auth.uid == userId;
+        allow get: if isOwner(userId) && isValidId(settingId);
+        allow create, update: if isOwner(userId) && isValidId(settingId) && isValidUserSettingsUpdate(incoming());
       }
 
-      // Logs subcollection
       match /logs/{logId} {
-        
-        function isValidLogFieldTypes(data) {
-           return data.userId is string && data.userId.size() <= 128 
-               && data.id is string && data.id.size() <= 128
-               && data.date is string && data.date.size() <= 20
-               && data.startTime is string && data.startTime.size() <= 10
-               && data.endTime is string && data.endTime.size() <= 10
-               && (data.breakMinutes is string || data.breakMinutes is number)
-               && (data.totalHours is number)
-               && (data.keys().hasAny(['overtimeHours']) ? (data.overtimeHours is number) : true);
-        }
-
-        // Must specify userId correctly and it must be the requesting user's ID.
-        function isValidLogData(data) {
-            return isValidLogFieldTypes(data) && data.userId == request.auth.uid && data.userId == userId;
-        }
-        
-        allow get: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
-        
-        allow list: if isSignedIn() && request.auth.uid == userId;
-        
-        allow create: if isSignedIn() && request.auth.uid == userId
-                      && isValidId(logId) 
-                      && isValidLogData(incoming());
-                      
-        allow update: if isSignedIn() && request.auth.uid == userId
-                      && existing().userId == request.auth.uid
-                      && isValidLogData(incoming());
-                      
-        allow delete: if isSignedIn() && request.auth.uid == userId 
-                      && existing().userId == request.auth.uid;
+        allow get: if isOwner(userId) && isValidId(logId);
+        allow list: if isOwner(userId) && resource.data.userId == userId;
+        allow create: if isOwner(userId) && isValidId(logId) && isValidLog(incoming(), userId);
+        allow update: if isOwner(userId) && isValidId(logId) && isValidLog(incoming(), userId);
+        allow delete: if isOwner(userId) && isValidId(logId);
       }
     }
   }
