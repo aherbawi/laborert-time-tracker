@@ -1,10 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+// Use environment variable for API key if available to avoid hardcoding secrets
+const config = {
+  ...firebaseConfig,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey
+};
+
+const app = initializeApp(config);
+export const db = getFirestore(app, config.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
 export const googleProvider = new GoogleAuthProvider();
 
@@ -53,6 +59,21 @@ export const signInWithGoogle = async () => {
 export const logout = async () => {
     try {
         await signOut(auth);
+        
+        // Clear cached browser data
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Clear Firestore local database
+        try {
+            await terminate(db);
+            await clearIndexedDbPersistence(db);
+        } catch (e) {
+            console.warn("Could not clear firestore persistence", e);
+        }
+        
+        // Reload to completely wipe in-memory state and re-initialize Firebase
+        window.location.reload();
     } catch (error) {
         console.error("Error signing out", error);
         throw error;
