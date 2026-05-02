@@ -35,7 +35,16 @@ export const signInWithGoogle = async () => {
         }
         if (error?.code === 'auth/unauthorized-domain') {
             alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console Settings -> Authentication -> Authorized domains.");
+            return;
         }
+        
+        // If it's a cross-origin iframe issue, fallback to redirect or prompt user
+        if (error?.message?.includes('Cross-Origin') || error?.name === 'FirebaseError') {
+             alert('Authentication failed. If you are viewing this in the AI Studio preview, please click the "Open in new tab" icon (top right) to sign in safely.');
+        } else {
+             alert("Sign-in error: " + error.message);
+        }
+        
         console.error("Error signing in with Google", error);
         throw error;
     }

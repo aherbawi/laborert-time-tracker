@@ -131,7 +131,7 @@ export default function App() {
   // Firebase Log Subscription
   useEffect(() => {
     if (!user) return;
-    const logsRef = query(collection(db, 'users', user.uid, 'logs'), where('userId', '==', user.uid));
+    const logsRef = collection(db, 'users', user.uid, 'logs');
     const unsub = onSnapshot(logsRef, (snapshot) => {
       const dbLogs: WorkLog[] = [];
       snapshot.forEach(doc => {

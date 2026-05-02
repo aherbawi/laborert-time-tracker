@@ -35,7 +35,7 @@ service cloud.firestore {
                && data.endTime is string && data.endTime.size() <= 10
                && (data.breakMinutes is string || data.breakMinutes is number)
                && (data.totalHours is number)
-               && data.keys().hasAny(['overtimeHours']) ? (data.overtimeHours is number) : true;
+               && (data.keys().hasAny(['overtimeHours']) ? (data.overtimeHours is number) : true);
         }
 
         // Must specify userId correctly and it must be the requesting user's ID.
@@ -45,7 +45,7 @@ service cloud.firestore {
         
         allow get: if isSignedIn() && request.auth.uid == userId && existing().userId == request.auth.uid;
         
-        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+        allow list: if isSignedIn() && request.auth.uid == userId;
         
         allow create: if isSignedIn() && request.auth.uid == userId
                       && isValidId(logId) 
