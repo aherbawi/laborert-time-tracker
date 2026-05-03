@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, MouseEvent, ChangeEvent, FormEvent } from 'react';
-import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkLog } from './types';
 import { auth, db, signInWithGoogle, logout, checkStorageAccess } from './firebase';
@@ -135,6 +135,8 @@ export default function App() {
   const [breakMinutes, setBreakMinutes] = useState<string>(defaultBreakMinutes);
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('language', lang);
@@ -195,6 +197,8 @@ export default function App() {
         if (data.defaultBreakMinutes) setDefaultBreakMinutes(data.defaultBreakMinutes.toString());
         if (data.payPeriodStartDay) setPayPeriodStartDay(data.payPeriodStartDay);
         if (data.otDays) setOtDays(data.otDays);
+        if (data.lang) setLang(data.lang);
+        if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return unsub;
@@ -209,9 +213,11 @@ export default function App() {
       defaultEndTime,
       defaultBreakMinutes: parseInt(defaultBreakMinutes) || 0,
       payPeriodStartDay,
-      otDays
+      otDays,
+      lang,
+      isDarkMode
     }, { merge: true }).catch(error => handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/settings/config`));
-  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays]);
+  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays, lang, isDarkMode]);
 
   useEffect(() => {
     localStorage.setItem('defaultStartTime', defaultStartTime);
@@ -275,12 +281,17 @@ export default function App() {
   };
 
   const syncLocalToFirebase = async () => {
-    if (!user) return;
+    if (!user || syncing) return;
+    setSyncing(true);
+    setSyncSuccess(false);
     try {
+      // Sync Logs
       const localLogsStr = localStorage.getItem('work_logs');
+      const batch = writeBatch(db);
+      let haveChanges = false;
+      
       if (localLogsStr) {
         const localLogs: WorkLog[] = JSON.parse(localLogsStr);
-        const batch = writeBatch(db);
         for (const log of localLogs) {
           const logRef = doc(db, 'users', user.uid, 'logs', log.id);
           batch.set(logRef, {
@@ -294,14 +305,34 @@ export default function App() {
             overtimeHours: log.overtimeHours,
             createdAt: new Date().toISOString()
           }, { merge: true });
+          haveChanges = true;
         }
+      }
+
+      // Sync Settings
+      const settingsRef = doc(db, 'users', user.uid, 'settings', 'config');
+      batch.set(settingsRef, {
+        defaultStartTime: localStorage.getItem('defaultStartTime') || defaultStartTime,
+        defaultEndTime: localStorage.getItem('defaultEndTime') || defaultEndTime,
+        defaultBreakMinutes: parseInt(localStorage.getItem('defaultBreakMinutes') || defaultBreakMinutes.toString()) || 0,
+        payPeriodStartDay: parseInt(localStorage.getItem('payPeriodStartDay') || payPeriodStartDay.toString(), 10) || 19,
+        otDays: JSON.parse(localStorage.getItem('otDays') || JSON.stringify(otDays)),
+        lang: (localStorage.getItem('language') as Language) || lang,
+        isDarkMode: localStorage.getItem('theme') === 'dark' || isDarkMode
+      }, { merge: true });
+      haveChanges = true;
+
+      if (haveChanges) {
         await batch.commit();
         localStorage.removeItem('work_logs');
-        alert('Local logs synced to Firebase!');
       }
+
+      setSyncSuccess(true);
+      setTimeout(() => setSyncSuccess(false), 3000);
     } catch(err) {
       console.error(err);
-      alert('Failed to sync. Check console.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -576,8 +607,21 @@ export default function App() {
                </div>
             ) : (
                <>
-                 <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300" title={t.sync}>
-                    <RefreshCw size={20} />
+                 <button 
+                   onClick={syncLocalToFirebase} 
+                   disabled={syncing}
+                   className={`p-2 rounded-lg transition-all duration-300 flex items-center justify-center ${
+                     syncSuccess 
+                       ? 'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400' 
+                       : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
+                   }`} 
+                   title={t.sync}
+                 >
+                    {syncSuccess ? (
+                      <Check size={20} className="scale-110" />
+                    ) : (
+                      <RefreshCw size={20} className={syncing ? 'animate-spin' : ''} />
+                    )}
                  </button>
                  <button onClick={handleLogout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300" title={t.signOut}>
                     <LogOut size={20} />
@@ -680,20 +724,22 @@ export default function App() {
                       >
                         {dateStr && (
                           <>
-                            <div className="flex justify-between items-start">
+                            <div className="flex justify-between items-start mb-1">
                               <span className={`text-sm font-semibold ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
                                 {parseLocalDate(dateStr).getDate()}
                               </span>
-                              {isOtDay && (
-                                <span className={`font-black uppercase text-amber-500/70 dark:text-amber-400/50 ${lang === 'ar' ? 'text-[10px] tracking-normal' : 'text-[9px] tracking-wider'}`}>
-                                  {lang === 'ar' ? 'إضافي' : 'OT'}
-                                </span>
-                              )}
                             </div>
                             {isCycleStart && (
-                                <div className="absolute top-2 right-2 text-amber-500" title="Cycle Start">
+                                <div className={`absolute top-2 ${lang === 'ar' ? 'left-2' : 'right-2'} text-amber-500`} title="Cycle Start">
                                     <Flag size={14} className="fill-amber-500" />
                                 </div>
+                            )}
+                            {isOtDay && (
+                              <div className={`absolute bottom-1 ${lang === 'ar' ? 'right-1' : 'left-1'}`}>
+                                <span className={`font-black uppercase text-amber-500/70 dark:text-amber-400/50 ${lang === 'ar' ? 'text-[8px] tracking-normal' : 'text-[8px] tracking-wider'}`}>
+                                  {lang === 'ar' ? 'إضافي' : 'OT'}
+                                </span>
+                              </div>
                             )}
                             {dayLogs && dayLogs.length > 0 && (
                               <div className="mt-0.5 sm:mt-1 flex flex-col gap-0.5 sm:gap-1">
@@ -778,8 +824,8 @@ export default function App() {
                                 </p>
                             </div>
                         </div>
-                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
-                            <History size={80} />
+                        <div className={`absolute -bottom-4 ${lang === 'ar' ? '-left-4' : '-right-4'} opacity-10 pointer-events-none transform -rotate-12`}>
+                            <Clock size={160} />
                         </div>
                       </div>
                   );
@@ -795,8 +841,8 @@ export default function App() {
             >
               {/* Data Entry Card */}
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 md:p-8 border border-slate-100 dark:border-slate-700 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-5 dark:opacity-10 pointer-events-none">
-                    <CalendarIcon size={120} className="text-slate-900 dark:text-slate-100" />
+                <div className={`absolute -bottom-6 ${lang === 'ar' ? '-left-6' : '-right-6'} opacity-5 dark:opacity-10 pointer-events-none transform rotate-12`}>
+                    <Clock size={180} className="text-slate-900 dark:text-slate-100" />
                 </div>
                 
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
