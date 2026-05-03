@@ -73,6 +73,7 @@ const parseLocalDate = (dateStr: string) => {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark';
@@ -130,6 +131,7 @@ export default function App() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      setAuthLoading(false);
     });
     return unsub;
   }, []);
@@ -526,10 +528,22 @@ export default function App() {
           </div>
           
           <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
-            {!user ? (
-               <button onClick={signInWithGoogle} className="p-2 bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-sm gap-2 whitespace-nowrap">
-                  <LogIn size={16} /> Sign In
-               </button>
+            {authLoading ? (
+               <div className="p-2 flex items-center justify-center">
+                  <RefreshCw size={20} className="animate-spin text-slate-400" />
+               </div>
+            ) : !user ? (
+               <div className="flex flex-col items-center sm:items-end gap-1">
+                  <button onClick={signInWithGoogle} className="p-2 bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-sm gap-2 whitespace-nowrap">
+                     <LogIn size={16} /> Sign In
+                  </button>
+                  <button 
+                    onClick={() => alert('Sign-in help:\n1. If on mobile, try using a non-incognito tab.\n2. Ensure "Third-party cookies" are allowed in settings.\n3. If viewed inside AI Studio, click the "Open in new tab" icon at the top right.\n4. If popups are blocked, the app will try to redirect.')}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                  >
+                    Trouble signing in?
+                  </button>
+               </div>
             ) : (
                <>
                  <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sync Local to Cloud">

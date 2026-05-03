@@ -1,11 +1,17 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const auth = getAuth();
+
+// Explicitly set persistence to LOCAL for better mobile reliability
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.error("Failed to set persistence:", err);
+});
+
 export const googleProvider = new GoogleAuthProvider();
 
 getRedirectResult(auth).then((result) => {
@@ -21,12 +27,18 @@ getRedirectResult(auth).then((result) => {
 
 export const signInWithGoogle = async () => {
     try {
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        if (isMobile) {
-            // Mobile devices often block popups or have issues with third-party cookie access in popups.
-            await signInWithRedirect(auth, googleProvider);
-        } else {
+        // Try popup first as it is more reliable for state persistence on mobile Chrome 
+        // if the user has popups enabled or handles the "Popup blocked" prompt.
+        try {
             await signInWithPopup(auth, googleProvider);
+        } catch (popupError: any) {
+            // If popup is blocked or fails, then try redirect as a fallback
+            if (popupError?.code === 'auth/popup-blocked' || popupError?.code === 'auth/cancelled-popup-request') {
+                console.log("Popup blocked, falling back to redirect...");
+                await signInWithRedirect(auth, googleProvider);
+            } else {
+                throw popupError;
+            }
         }
     } catch (error: any) {
         if (error?.code === 'auth/popup-closed-by-user') {
@@ -38,11 +50,12 @@ export const signInWithGoogle = async () => {
             return;
         }
         
-        // If it's a cross-origin iframe issue, fallback to redirect or prompt user
-        if (error?.message?.includes('Cross-Origin') || error?.name === 'FirebaseError') {
-             alert('Authentication failed. If you are viewing this in the AI Studio preview, please click the "Open in new tab" icon (top right) to sign in safely.');
+        // Detailed error for typical iframe/mobile issues
+        const isIframe = window.self !== window.top;
+        if (isIframe || error?.message?.includes('Cross-Origin')) {
+             alert('Authentication failed. If you are using a mobile device or a restricted browser, please click the "Open in new tab" icon (top right) or ensure third-party cookies are allowed.');
         } else {
-             alert("Sign-in error: " + error.message);
+             alert("Sign-in error: " + error.code + " - " + error.message);
         }
         
         console.error("Error signing in with Google", error);
