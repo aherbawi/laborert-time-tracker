@@ -820,19 +820,19 @@ export default function App() {
                                 </div>
                             )}
                             {isOtDay && (
-                              <div className={`absolute bottom-1 ${lang === 'ar' ? 'right-1' : 'left-1'}`}>
-                                <span className={`font-black uppercase text-amber-500/70 dark:text-amber-400/50 ${lang === 'ar' ? 'text-[8px] tracking-normal' : 'text-[8px] tracking-wider'}`}>
+                              <div className={`absolute bottom-1.5 ${lang === 'ar' ? 'right-1.5' : 'left-1.5'}`}>
+                                <span className={`font-black uppercase text-amber-500/40 dark:text-amber-400/30 ${lang === 'ar' ? 'text-[9px] tracking-normal' : 'text-[9px] tracking-wider'}`}>
                                   {lang === 'ar' ? 'إضافي' : 'OT'}
                                 </span>
                               </div>
                             )}
                             {dayLogs && dayLogs.length > 0 && (
                               <div className="mt-0.5 sm:mt-1 flex flex-col gap-0.5 sm:gap-1">
-                                <span className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-1 sm:px-1.5 py-0 sm:py-0.5 rounded sm:rounded-md inline-block w-fit leading-tight min-w-[20px] text-center">
+                                <span className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-1 sm:px-1.5 py-0 sm:py-0.5 rounded sm:rounded-md inline-block w-fit leading-tight min-w-[20px] text-center border border-indigo-200 dark:border-indigo-800">
                                   {totalForDay.toFixed(1)}<span className="hidden sm:inline">{lang === 'ar' ? 'س' : 'h'}</span>
                                 </span>
                                 {dayLogs.some(l => l.overtimeHours) && (
-                                  <span className={`font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-0.5 sm:px-1 py-0 sm:py-0.5 rounded inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight ${lang === 'ar' ? 'text-[9px] sm:text-[10px]' : 'text-[8px] sm:text-[10px]'}`}>
+                                  <span className={`font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-0.5 sm:px-1 py-0 sm:py-0.5 rounded inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight border border-amber-200 dark:border-amber-800 ${lang === 'ar' ? 'text-[9px] sm:text-[10px]' : 'text-[8px] sm:text-[10px]'}`}>
                                     {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="hidden sm:inline">{lang === 'ar' ? ' س إضافي' : 'h OT'}</span>
                                   </span>
                                 )}
@@ -997,7 +997,7 @@ export default function App() {
                                       {totalTemp.toFixed(2)} <span className="text-lg font-bold">{lang === 'ar' ? 'ساعة' : 'Hrs'}</span>
                                     </p>
                                     {otTemp > 0 && (
-                                      <span className="text-sm font-bold text-amber-500">
+                                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
                                         (+{otTemp.toFixed(2)} {lang === 'ar' ? 'إضافي' : 'OT'})
                                       </span>
                                     )}
@@ -1044,10 +1044,16 @@ export default function App() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">{log.startTime} - {log.endTime}</p>
-                            <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
-                              {log.breakMinutes}m break
-                              {log.overtimeHours ? ` • ${log.overtimeHours}h OT` : ''}
-                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
+                                  {log.breakMinutes}m break
+                                </p>
+                                {log.overtimeHours ? (
+                                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                    {log.overtimeHours}h OT
+                                  </span>
+                                ) : null}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2">
