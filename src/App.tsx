@@ -636,6 +636,30 @@ export default function App() {
     }, {} as Record<string, WorkLog[]>);
   }, [logs]);
 
+  const calendarTitle = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const t = translations[lang];
+    
+    if (calendarViewMode === 'cycle') {
+        const start = new Date(year, month, payPeriodStartDay);
+        const end = new Date(year, month + 1, payPeriodStartDay - 1);
+        
+        if (start.getMonth() !== end.getMonth()) {
+            const startMonth = t.months[start.getMonth()];
+            const endMonth = t.months[end.getMonth()];
+            const startYear = start.getFullYear();
+            const endYear = end.getFullYear();
+            
+            if (startYear !== endYear) {
+                return `${startMonth} ${startYear} - ${endMonth} ${endYear}`;
+            }
+            return `${startMonth} - ${endMonth} ${startYear}`;
+        }
+    }
+    return `${t.months[month]} ${year}`;
+  }, [currentMonth, calendarViewMode, payPeriodStartDay, lang]);
+
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} ${lang === 'ar' ? 'font-sans' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <main className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
@@ -771,9 +795,16 @@ export default function App() {
                 <button aria-label="Previous Month" onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
                   {lang === 'ar' ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
                 </button>
-                <h2 className="text-lg font-bold capitalize">
-                  {t.months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                </h2>
+                <div className="flex flex-col items-center">
+                  {calendarViewMode === 'cycle' && (
+                    <span className="text-[10px] font-black uppercase text-indigo-500/60 dark:text-indigo-400/50 tracking-widest mb-0.5">
+                      {t.calendarViewCycle}
+                    </span>
+                  )}
+                  <h2 className="text-base sm:text-lg font-bold capitalize text-center">
+                    {calendarTitle}
+                  </h2>
+                </div>
                 <button aria-label="Next Month" onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
                   {lang === 'ar' ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
                 </button>
@@ -789,36 +820,46 @@ export default function App() {
                   ))}
                 </div>
                 <div className="grid grid-cols-7">
-                  {daysInMonth.map((dateStr, idx) => {
-                    const isToday = dateStr === getLocalDateString();
-                    const isCycleStart = dateStr && parseLocalDate(dateStr).getDate() === payPeriodStartDay;
-                    const isOtDay = dateStr ? otDays.includes(parseLocalDate(dateStr).getDay()) : false;
-                    const dayLogs = dateStr ? logsByDate[dateStr] : [];
-                    const totalForDay = dayLogs?.reduce((sum, l) => sum + l.totalHours, 0);
+                    {daysInMonth.map((dateStr, idx) => {
+                      const isToday = dateStr === getLocalDateString();
+                      const dayDate = dateStr ? parseLocalDate(dateStr) : null;
+                      const isCycleStart = dayDate && dayDate.getDate() === payPeriodStartDay;
+                      const isFirstDayOfMonth = dayDate && dayDate.getDate() === 1;
+                      const isOtDay = dateStr ? otDays.includes(parseLocalDate(dateStr).getDay()) : false;
+                      const dayLogs = dateStr ? logsByDate[dateStr] : [];
+                      const totalForDay = dayLogs?.reduce((sum, l) => sum + l.totalHours, 0);
 
-                    return (
-                      <div 
-                        key={idx} 
-                        onClick={() => dateStr && openDate(dateStr)}
-                        className={`
-                            relative h-20 sm:h-24 md:h-28 p-1.5 sm:p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors flex flex-col gap-1
-                            ${!dateStr ? 'bg-slate-50/50 dark:bg-slate-800/50 pointer-events-none' : ''}
-                            ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-900/20' : ''}
-                            ${isOtDay && !isToday && dateStr ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}
-                        `}
-                      >
-                        {dateStr && (
-                          <>
-                            <div className="flex justify-between items-start">
-                              <span className={`text-sm font-bold leading-none ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                                {parseLocalDate(dateStr).getDate()}
-                              </span>
-                              {isOtDay && (
-                                <span className={`font-black uppercase text-amber-500/60 dark:text-amber-600/40 ${lang === 'ar' ? 'text-[8px]' : 'text-[8px] tracking-wider'}`}>
-                                  {lang === 'ar' ? 'إضافي' : 'OT'}
-                                </span>
-                              )}
-                            </div>
+                      return (
+                        <div 
+                          key={idx} 
+                          onClick={() => dateStr && openDate(dateStr)}
+                          className={`
+                              relative h-20 sm:h-24 md:h-28 p-1.5 sm:p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors flex flex-col gap-1
+                              ${!dateStr ? 'bg-slate-50/50 dark:bg-slate-800/50 pointer-events-none' : ''}
+                              ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-900/20' : ''}
+                              ${isOtDay && !isToday && dateStr ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}
+                              ${isFirstDayOfMonth ? 'ring-1 ring-inset ring-slate-200 dark:ring-slate-700/50' : ''}
+                          `}
+                        >
+                          {dateStr && dayDate && (
+                            <>
+                              <div className="flex justify-between items-start">
+                                <div className="flex flex-col items-start leading-none gap-0.5">
+                                  <span className={`text-sm font-bold ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                                    {dayDate.getDate()}
+                                  </span>
+                                  {isFirstDayOfMonth && (
+                                    <span className="text-[7px] sm:text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 truncate max-w-[40px] sm:max-w-none">
+                                      {t.months[dayDate.getMonth()]}
+                                    </span>
+                                  )}
+                                </div>
+                                {isOtDay && (
+                                  <span className={`font-black uppercase text-amber-500/60 dark:text-amber-600/40 ${lang === 'ar' ? 'text-[8px]' : 'text-[8px] tracking-wider'}`}>
+                                    {lang === 'ar' ? 'إضافي' : 'OT'}
+                                  </span>
+                                )}
+                              </div>
                             
                             {isCycleStart && (
                                 <div className={`absolute bottom-1 ${lang === 'ar' ? 'left-1' : 'right-1'} text-amber-500 opacity-30`} title="Cycle Start">
