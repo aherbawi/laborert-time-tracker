@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, MouseEvent, ChangeEvent, FormEvent } from 'react';
-import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkLog } from './types';
 import { auth, db, signInWithGoogle, logout, checkStorageAccess } from './firebase';
@@ -138,6 +138,15 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [showSignInHelp, setShowSignInHelp] = useState(false);
+  
+  const [reminderTime, setReminderTime] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('reminderTime') || '';
+    return '';
+  });
+  const [hasNotifiedToday, setHasNotifiedToday] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('hasNotifiedToday') === getLocalDateString();
+    return false;
+  });
 
   useEffect(() => {
     localStorage.setItem('language', lang);
@@ -200,6 +209,7 @@ export default function App() {
         if (data.otDays) setOtDays(data.otDays);
         if (data.lang) setLang(data.lang);
         if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
+        if (data.reminderTime !== undefined) setReminderTime(data.reminderTime);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return unsub;
@@ -216,9 +226,14 @@ export default function App() {
       payPeriodStartDay,
       otDays,
       lang,
-      isDarkMode
+      isDarkMode,
+      reminderTime
     }, { merge: true }).catch(error => handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/settings/config`));
-  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays, lang, isDarkMode]);
+  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays, lang, isDarkMode, reminderTime]);
+
+  useEffect(() => {
+    localStorage.setItem('reminderTime', reminderTime);
+  }, [reminderTime]);
 
   useEffect(() => {
     localStorage.setItem('defaultStartTime', defaultStartTime);
@@ -250,6 +265,43 @@ export default function App() {
       localStorage.setItem('theme', 'light');
     }
   }, [isDarkMode]);
+
+  // Notifications logic
+  useEffect(() => {
+    if (!reminderTime) return;
+
+    const requestPermission = async () => {
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+    };
+    requestPermission();
+
+    const interval = setInterval(() => {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const now = new Date();
+        const currentHours = String(now.getHours()).padStart(2, '0');
+        const currentMinutes = String(now.getMinutes()).padStart(2, '0');
+        const currentTime = `${currentHours}:${currentMinutes}`;
+        
+        const todayDateStr = getLocalDateString(now);
+        const hasLogForToday = logs.some(log => log.date === todayDateStr);
+
+        if (!hasLogForToday && currentTime >= reminderTime) {
+          const lastNotified = localStorage.getItem('hasNotifiedToday');
+          if (lastNotified !== todayDateStr) {
+            new Notification(t.notificationTitle || 'Log Reminder', {
+              body: t.notificationBody || 'Don\'t forget to log your work hours for today!',
+            });
+            localStorage.setItem('hasNotifiedToday', todayDateStr);
+            setHasNotifiedToday(true);
+          }
+        }
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [reminderTime, logs, t]);
 
   // Load history on mount or local changes
   useEffect(() => {
@@ -319,7 +371,8 @@ export default function App() {
         payPeriodStartDay: parseInt(localStorage.getItem('payPeriodStartDay') || payPeriodStartDay.toString(), 10) || 19,
         otDays: JSON.parse(localStorage.getItem('otDays') || JSON.stringify(otDays)),
         lang: (localStorage.getItem('language') as Language) || lang,
-        isDarkMode: localStorage.getItem('theme') === 'dark' || isDarkMode
+        isDarkMode: localStorage.getItem('theme') === 'dark' || isDarkMode,
+        reminderTime: localStorage.getItem('reminderTime') || reminderTime
       }, { merge: true });
       haveChanges = true;
 
@@ -1116,6 +1169,35 @@ export default function App() {
                         onChange={(e) => setDefaultBreakMinutes(e.target.value)}
                         className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
+                    </div>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="reminderTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            {t.reminderTime}
+                            <span className="block text-xs text-slate-500 font-normal mt-1">{t.reminderTimeDesc}</span>
+                        </label>
+                        <div className="relative">
+                            <input 
+                            id="reminderTime"
+                            type="time" 
+                            value={reminderTime}
+                            onChange={(e) => {
+                                setReminderTime(e.target.value);
+                                if (e.target.value && 'Notification' in window && Notification.permission === 'default') {
+                                    Notification.requestPermission();
+                                }
+                            }}
+                            className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                            />
+                            {reminderTime && (
+                                <button
+                                    onClick={() => setReminderTime('')}
+                                    className={`absolute top-1/2 -translate-y-1/2 ${lang === 'ar' ? 'left-3' : 'right-3'} p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors`}
+                                    title={lang === 'ar' ? 'مسح' : 'Clear'}
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="space-y-2 text-left rtl:text-right">
                         <label htmlFor="payPeriodStartDay" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.payPeriodStart} (1-31)</label>
