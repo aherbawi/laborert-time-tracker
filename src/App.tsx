@@ -137,6 +137,7 @@ export default function App() {
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const [showSignInHelp, setShowSignInHelp] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('language', lang);
@@ -599,7 +600,7 @@ export default function App() {
                      <LogIn size={16} /> {t.signIn}
                   </button>
                   <button 
-                    onClick={() => alert(lang === 'en' ? 'Sign-in help:\n1. If on mobile, try using a non-incognito tab.\n2. Ensure "Third-party cookies" are allowed in settings.\n3. If viewed inside AI Studio, click the "Open in new tab" icon at the top right.\n4. If popups are blocked, the app will try to redirect.' : 'مساعدة ا بتسجيل الدخول:\n1. إذا كنت تستخدم الجوال، جرب استخدام علامة تبويب غير متخفية.\n2. تأكد من السماح بملفات تعريف الارتباط للجهات الخارجية في الإعدادات.\n3. في حال استخدامه داخل AI Studio، اضغط على زر "فتح في نافذة جديدة" بالأعلى.\n4. في حال حظر النوافذ المنبثقة، سيحاول التطبيق إعادة التوجيه.')}
+                    onClick={() => setShowSignInHelp(true)}
                     className="text-[10px] text-slate-400 hover:text-slate-600 underline"
                   >
                     {t.troubleSignIn}
@@ -824,8 +825,8 @@ export default function App() {
                                 </p>
                             </div>
                         </div>
-                        <div className={`absolute -bottom-4 ${lang === 'ar' ? '-left-4' : '-right-4'} opacity-10 pointer-events-none transform -rotate-12`}>
-                            <Clock size={160} />
+                        <div className={`absolute top-0 ${lang === 'ar' ? 'left-0' : 'right-0'} p-4 opacity-10 pointer-events-none`}>
+                            <History size={80} />
                         </div>
                       </div>
                   );
@@ -841,8 +842,8 @@ export default function App() {
             >
               {/* Data Entry Card */}
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 md:p-8 border border-slate-100 dark:border-slate-700 relative overflow-hidden">
-                <div className={`absolute -bottom-6 ${lang === 'ar' ? '-left-6' : '-right-6'} opacity-5 dark:opacity-10 pointer-events-none transform rotate-12`}>
-                    <Clock size={180} className="text-slate-900 dark:text-slate-100" />
+                <div className={`absolute top-0 ${lang === 'ar' ? 'left-0' : 'right-0'} p-4 opacity-5 dark:opacity-10 pointer-events-none`}>
+                    <CalendarIcon size={120} className="text-slate-900 dark:text-slate-100" />
                 </div>
                 
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
@@ -1163,6 +1164,53 @@ export default function App() {
           )}
         </AnimatePresence>
       </main>
+      {/* Modals placed here */}
+      <AnimatePresence>
+        {showSignInHelp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
+            onClick={() => setShowSignInHelp(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-slate-100 dark:border-slate-700 space-y-4"
+              dir={lang === 'ar' ? 'rtl' : 'ltr'}
+            >
+              <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 mb-2">
+                {lang === 'ar' ? 'مساعدة في تسجيل الدخول' : 'Sign-in help'}
+              </h3>
+              <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-2 list-disc list-inside">
+                {lang === 'ar' ? (
+                  <>
+                    <li>إذا كنت تستخدم الجوال، جرب استخدام متصفح عادي وتجنب وضع التصفح المتخفي.</li>
+                    <li>تأكد من السماح بـ "ملفات تعريف الارتباط للجهات الخارجية" (Third-party cookies) في إعدادات المتصفح.</li>
+                    <li>في حال حظر النوافذ المنبثقة، سيحاول التطبيق إعادة التوجيه تلقائياً لتسجيل الدخول.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>If on mobile, try using a normal browser tab (not incognito/private).</li>
+                    <li>Ensure "Third-party cookies" are allowed in your browser settings.</li>
+                    <li>If popups are blocked, the app will try to redirect.</li>
+                  </>
+                )}
+              </ul>
+              <button
+                onClick={() => setShowSignInHelp(false)}
+                className="w-full mt-4 p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
+              >
+                {lang === 'ar' ? 'حسناً، فهمت' : 'OK, I got it'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
