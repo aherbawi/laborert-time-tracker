@@ -801,41 +801,47 @@ export default function App() {
                         key={idx} 
                         onClick={() => dateStr && openDate(dateStr)}
                         className={`
-                            relative h-16 sm:h-20 md:h-24 p-1 sm:p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors
-                            ${!dateStr ? 'bg-slate-50/50 dark:bg-slate-800/50 text-transparent' : ''}
+                            relative h-20 sm:h-24 md:h-28 p-1.5 sm:p-2 border-r border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors flex flex-col gap-1
+                            ${!dateStr ? 'bg-slate-50/50 dark:bg-slate-800/50 pointer-events-none' : ''}
                             ${isToday ? 'bg-indigo-50/30 dark:bg-indigo-900/20' : ''}
-                            ${isOtDay && !isToday && dateStr ? 'bg-amber-50/40 dark:bg-amber-900/20' : ''}
+                            ${isOtDay && !isToday && dateStr ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}
                         `}
                       >
                         {dateStr && (
                           <>
-                            <div className="flex justify-between items-start mb-1">
-                              <span className={`text-sm font-semibold ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
+                            <div className="flex justify-between items-start">
+                              <span className={`text-sm font-bold leading-none ${isToday ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-600 dark:text-slate-300'}`}>
                                 {parseLocalDate(dateStr).getDate()}
                               </span>
                               {isOtDay && (
-                                <span className={`font-black uppercase text-amber-500/60 dark:text-amber-400/50 ${lang === 'ar' ? 'text-[8px] tracking-normal' : 'text-[8px] tracking-wider'}`}>
+                                <span className={`font-black uppercase text-amber-500/60 dark:text-amber-600/40 ${lang === 'ar' ? 'text-[8px]' : 'text-[8px] tracking-wider'}`}>
                                   {lang === 'ar' ? 'إضافي' : 'OT'}
                                 </span>
                               )}
                             </div>
+                            
                             {isCycleStart && (
-                                <div className={`absolute top-6 ${lang === 'ar' ? 'left-1' : 'right-1'} text-amber-500`} title="Cycle Start">
-                                    <Flag size={12} className="fill-amber-500" />
+                                <div className={`absolute bottom-1 ${lang === 'ar' ? 'left-1' : 'right-1'} text-amber-500 opacity-30`} title="Cycle Start">
+                                    <Flag size={10} className="fill-amber-500" />
                                 </div>
                             )}
-                            {dayLogs && dayLogs.length > 0 && (
-                              <div className="mt-0.5 sm:mt-1 flex flex-col items-start gap-1">
-                                <span className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded-full inline-block w-fit leading-tight border border-indigo-200 dark:border-indigo-800">
-                                  {totalForDay.toFixed(1)}<span className="hidden sm:inline-marginLeft ml-1">{lang === 'ar' ? 'س' : 'h'}</span>
-                                </span>
-                                {dayLogs.some(l => l.overtimeHours) && (
-                                  <span className={`font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.5 rounded-full inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight border border-amber-200 dark:border-amber-800 ${lang === 'ar' ? 'text-[9px] sm:text-[10px]' : 'text-[8px] sm:text-[10px]'}`}>
-                                    {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="hidden sm:inline-marginLeft ml-1">{lang === 'ar' ? 'إضافي' : 'OT'}</span>
-                                  </span>
-                                )}
-                              </div>
-                            )}
+
+                            <div className="mt-auto flex flex-col items-start gap-1">
+                              {dayLogs && dayLogs.length > 0 && (
+                                <>
+                                  <div className="flex flex-col gap-1 w-full items-start">
+                                    <span className="text-[9px] sm:text-xs font-bold text-indigo-100 bg-indigo-600 dark:bg-indigo-600 px-1.5 py-0.5 rounded-full inline-flex items-center leading-none border border-indigo-700 shadow-sm">
+                                      {totalForDay.toFixed(1)}<span className="ml-0.5 opacity-80 text-[8px] sm:text-[10px]">{lang === 'ar' ? 'س' : 'h'}</span>
+                                    </span>
+                                    {dayLogs.some(l => l.overtimeHours) && (
+                                      <span className={`font-bold text-amber-100 bg-amber-600 dark:bg-amber-700/80 px-1.5 py-0.5 rounded-full inline-flex items-center leading-none border border-amber-700 shadow-sm ${lang === 'ar' ? 'text-[9px] sm:text-[10px]' : 'text-[8px] sm:text-[10px]'}`}>
+                                        {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="ml-0.5 opacity-80 text-[7px] sm:text-[9px]">{lang === 'ar' ? 'إضافي' : 'OT'}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
