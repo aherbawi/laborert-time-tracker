@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, MouseEvent, ChangeEvent, FormEvent } from
 import { Calendar as CalendarIcon, Clock, Coffee, Trash2, PlusCircle, ChevronLeft, ChevronRight, ArrowLeft, History, Sun, Moon, Download, Settings, Flag, Upload, Edit2, LogIn, LogOut, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkLog } from './types';
-import { auth, db, signInWithGoogle, logout } from './firebase';
+import { auth, db, signInWithGoogle, logout, checkStorageAccess } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, query, where, writeBatch } from 'firebase/firestore';
+import { translations, Language } from './i18n';
 
 enum OperationType {
   CREATE = 'create',
@@ -74,11 +75,19 @@ const parseLocalDate = (dateStr: string) => {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [storageRestricted, setStorageRestricted] = useState(false);
+  const [lang, setLang] = useState<Language>(() => {
+    return (localStorage.getItem('language') as Language) || 'ar';
+  });
+
+  const t = translations[lang];
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('theme') === 'dark';
+      const stored = localStorage.getItem('theme');
+      if (stored === null) return true; // Default to dark mode
+      return stored === 'dark';
     }
-    return false;
+    return true;
   });
 
   const [view, setView] = useState<'calendar' | 'entry' | 'settings' | 'export'>('calendar');
@@ -127,8 +136,20 @@ export default function App() {
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
 
+  useEffect(() => {
+    localStorage.setItem('language', lang);
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   // Auth State
   useEffect(() => {
+    const checkAccess = async () => {
+      const allowed = await checkStorageAccess();
+      setStorageRestricted(!allowed);
+    };
+    checkAccess();
+
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
@@ -500,7 +521,7 @@ export default function App() {
   }, [logs]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
+    <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} ${lang === 'ar' ? 'font-sans' : ''}`} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <main className="max-w-xl mx-auto p-2 sm:p-4 md:p-8 space-y-4 md:space-y-6">
         
         {/* Header */}
@@ -511,20 +532,12 @@ export default function App() {
                 <Clock size={24} />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight">Work Tracker</h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Manage your shifts</p>
+                <h1 className="text-xl font-bold tracking-tight">{t.title}</h1>
+                {user && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                )}
               </div>
             </div>
-            
-            {(view === 'entry' || view === 'settings' || view === 'export') && (
-              <button 
-                  onClick={() => setView('calendar')}
-                  aria-label="Back to calendar"
-                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex sm:hidden items-center gap-1 text-sm font-medium"
-              >
-                  <ArrowLeft size={18} />
-              </button>
-            )}
           </div>
           
           <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
@@ -534,35 +547,45 @@ export default function App() {
                </div>
             ) : !user ? (
                <div className="flex flex-col items-center sm:items-end gap-1">
+                  {storageRestricted && (
+                    <div className="mb-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-200 flex flex-col gap-2 max-w-[280px]">
+                      <p className="font-semibold flex items-center gap-1">
+                        <Flag size={14} /> {t.connectionIssue}
+                      </p>
+                      <p>{t.storageBlocked}</p>
+                      <div className="flex flex-col gap-1">
+                        <button 
+                          onClick={() => window.open(window.location.href, '_blank')}
+                          className="text-amber-600 dark:text-amber-400 font-bold hover:underline text-left"
+                        >
+                          → {t.openInNewTab}
+                        </button>
+                        <p className="opacity-70 italic text-[10px]">{t.allowCookies}</p>
+                      </div>
+                    </div>
+                  )}
                   <button onClick={signInWithGoogle} className="p-2 bg-slate-200 dark:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-800 dark:text-slate-100 font-bold text-sm gap-2 whitespace-nowrap">
-                     <LogIn size={16} /> Sign In
+                     <LogIn size={16} /> {t.signIn}
                   </button>
                   <button 
-                    onClick={() => alert('Sign-in help:\n1. If on mobile, try using a non-incognito tab.\n2. Ensure "Third-party cookies" are allowed in settings.\n3. If viewed inside AI Studio, click the "Open in new tab" icon at the top right.\n4. If popups are blocked, the app will try to redirect.')}
+                    onClick={() => alert(lang === 'en' ? 'Sign-in help:\n1. If on mobile, try using a non-incognito tab.\n2. Ensure "Third-party cookies" are allowed in settings.\n3. If viewed inside AI Studio, click the "Open in new tab" icon at the top right.\n4. If popups are blocked, the app will try to redirect.' : 'مساعدة ا بتسجيل الدخول:\n1. إذا كنت تستخدم الجوال، جرب استخدام علامة تبويب غير متخفية.\n2. تأكد من السماح بملفات تعريف الارتباط للجهات الخارجية في الإعدادات.\n3. في حال استخدامه داخل AI Studio، اضغط على زر "فتح في نافذة جديدة" بالأعلى.\n4. في حال حظر النوافذ المنبثقة، سيحاول التطبيق إعادة التوجيه.')}
                     className="text-[10px] text-slate-400 hover:text-slate-600 underline"
                   >
-                    Trouble signing in?
+                    {t.troubleSignIn}
                   </button>
                </div>
             ) : (
                <>
-                 <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sync Local to Cloud">
+                 <button onClick={syncLocalToFirebase} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300" title={t.sync}>
                     <RefreshCw size={20} />
                  </button>
-                 <button onClick={handleLogout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300 pointer-events-auto" title="Sign Out">
+                 <button onClick={handleLogout} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300" title={t.signOut}>
                     <LogOut size={20} />
                  </button>
                </>
             )}
-            <button 
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
-                title="Toggle Dark Mode"
-                aria-label="Toggle Dark Mode"
-            >
-                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            {view === 'calendar' && (
+
+            {view === 'calendar' ? (
               <>
                 <input 
                   type="file" 
@@ -574,39 +597,33 @@ export default function App() {
                 <button 
                     onClick={() => document.getElementById('csv-import')?.click()}
                     className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
-                    title="Import CSV"
-                    aria-label="Import CSV"
+                    title={t.import}
                 >
                     <Upload size={20} />
                 </button>
                 <button 
                     onClick={() => setView('export')}
                     className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
-                    title="Export CSV"
-                    aria-label="Export CSV"
+                    title={t.export}
                 >
                     <Download size={20} />
                 </button>
+                <button 
+                    onClick={() => setView('settings')}
+                    className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
+                    title={t.settings}
+                >
+                    <Settings size={20} />
+                </button>
               </>
-            )}
-            {view === 'calendar' && (
-              <button 
-                  onClick={() => setView('settings')}
-                  className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center justify-center text-slate-600 dark:text-slate-300"
-                  title="Settings"
-                  aria-label="Settings"
-              >
-                  <Settings size={20} />
-              </button>
-            )}
-            {(view === 'entry' || view === 'settings' || view === 'export') && (
-              <button 
+            ) : (
+                <button 
                   onClick={() => setView('calendar')}
-                  className="hidden sm:flex p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors items-center gap-2 text-sm font-medium"
-              >
-                  <ArrowLeft size={18} />
-                  <span>Back</span>
-              </button>
+                  className="flex p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors items-center gap-2 text-sm font-medium"
+                >
+                  {lang === 'ar' ? <ChevronRight size={18} /> : <ArrowLeft size={18} />}
+                  <span className="hidden sm:inline">{t.cancel}</span>
+                </button>
             )}
           </div>
         </header>
@@ -623,22 +640,22 @@ export default function App() {
               {/* Month Selector */}
               <div className="flex items-center justify-between bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <button aria-label="Previous Month" onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                  <ChevronLeft size={20} />
+                  {lang === 'ar' ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
                 </button>
                 <h2 className="text-lg font-bold capitalize">
-                  {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                  {t.months[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                 </h2>
                 <button aria-label="Next Month" onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                  <ChevronRight size={20} />
+                  {lang === 'ar' ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
                 </button>
               </div>
 
               {/* Calendar Grid */}
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden border border-slate-100 dark:border-slate-700">
                 <div className="grid grid-cols-7 border-b border-slate-50 dark:border-slate-700/50">
-                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
-                    <div key={idx} className="py-3 text-center text-[10px] uppercase tracking-widest font-black text-slate-400 dark:text-slate-500">
-                      {day}
+                  {t.days.map((day, idx) => (
+                    <div key={idx} className={`py-3 text-center text-[10px] sm:text-xs uppercase font-black text-slate-400 dark:text-slate-500 ${lang === 'ar' ? 'tracking-normal' : 'tracking-widest'}`}>
+                      {lang === 'ar' ? day : day[0]}
                     </div>
                   ))}
                 </div>
@@ -668,8 +685,8 @@ export default function App() {
                                 {parseLocalDate(dateStr).getDate()}
                               </span>
                               {isOtDay && (
-                                <span className="text-[9px] font-black uppercase text-amber-500/70 dark:text-amber-400/50 tracking-wider">
-                                  OT
+                                <span className={`font-black uppercase text-amber-500/70 dark:text-amber-400/50 ${lang === 'ar' ? 'text-[10px] tracking-normal' : 'text-[9px] tracking-wider'}`}>
+                                  {lang === 'ar' ? 'إضافي' : 'OT'}
                                 </span>
                               )}
                             </div>
@@ -681,11 +698,11 @@ export default function App() {
                             {dayLogs && dayLogs.length > 0 && (
                               <div className="mt-0.5 sm:mt-1 flex flex-col gap-0.5 sm:gap-1">
                                 <span className="text-[10px] sm:text-xs font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-1 sm:px-1.5 py-0 sm:py-0.5 rounded sm:rounded-md inline-block w-fit leading-tight min-w-[20px] text-center">
-                                  {totalForDay.toFixed(1)}<span className="hidden sm:inline">h</span>
+                                  {totalForDay.toFixed(1)}<span className="hidden sm:inline">{lang === 'ar' ? 'س' : 'h'}</span>
                                 </span>
                                 {dayLogs.some(l => l.overtimeHours) && (
-                                  <span className="text-[8px] sm:text-[10px] font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-0.5 sm:px-1 py-0 sm:py-0.5 rounded inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight">
-                                    {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="hidden sm:inline">h OT</span>
+                                  <span className={`font-bold text-amber-600 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-0.5 sm:px-1 py-0 sm:py-0.5 rounded inline-block w-fit max-w-full overflow-hidden text-ellipsis whitespace-nowrap leading-tight ${lang === 'ar' ? 'text-[9px] sm:text-[10px]' : 'text-[8px] sm:text-[10px]'}`}>
+                                    {dayLogs.reduce((sum, l) => sum + (l.overtimeHours || 0), 0).toFixed(1)}<span className="hidden sm:inline">{lang === 'ar' ? ' س إضافي' : 'h OT'}</span>
                                   </span>
                                 )}
                               </div>
@@ -746,18 +763,18 @@ export default function App() {
                       <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 dark:shadow-none relative overflow-hidden">
                         <div className="relative z-10">
                             <p className="text-indigo-100 text-xs font-semibold uppercase tracking-wider mb-1">
-                                Cycle Total ({d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {endDisplayD.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})
+                                {lang === 'ar' ? 'إجمالي الدورة' : 'Cycle Total'} ({lang === 'ar' ? `${d.getDate()} ${t.months[d.getMonth()]}` : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {lang === 'ar' ? `${endDisplayD.getDate()} ${t.months[endDisplayD.getMonth()]}` : endDisplayD.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})
                             </p>
                             <p className="text-4xl font-black">
                                 {totalThisCycle}
-                                <span className="text-sm ml-2 font-normal opacity-70">Hours</span>
+                                <span className="text-sm ml-2 font-normal opacity-70 rtl:mr-2">{lang === 'ar' ? 'ساعة' : 'Hours'}</span>
                             </p>
                             <div className="flex items-center gap-6 mt-3 border-t border-indigo-500/50 pt-3 flex-wrap">
                                 <p className="text-indigo-200 font-bold text-sm">
-                                    Overtime Total: {otThisCycle} Hours
+                                    {lang === 'ar' ? 'إجمالي الساعات الإضافية' : 'Overtime Total'}: {otThisCycle} {lang === 'ar' ? 'ساعة' : 'Hours'}
                                 </p>
                                 <p className="text-indigo-200 font-bold text-sm">
-                                    Total Work Days: {daysWorkedThisCycle}
+                                    {lang === 'ar' ? 'إجمالي أيام العمل' : 'Total Work Days'}: {daysWorkedThisCycle}
                                 </p>
                             </div>
                         </div>
@@ -783,14 +800,20 @@ export default function App() {
                 </div>
                 
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
-                    {parseLocalDate(selectedDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+                    {(() => {
+                      const date = parseLocalDate(selectedDate);
+                      if (lang === 'ar') {
+                        return `${t.days[date.getDay()]}، ${date.getDate()} ${t.months[date.getMonth()]}`;
+                      }
+                      return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+                    })()}
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
-                  <div className="space-y-2 text-left">
+                  <div className="space-y-2 text-left rtl:text-right">
                     <label htmlFor="breakMinutes" className="flex items-center text-sm font-medium text-slate-700 dark:text-slate-300 gap-2">
                       <Coffee size={16} className="text-indigo-500 dark:text-indigo-400" />
-                      Break (Minutes)
+                      {t.break}
                     </label>
                     <input 
                       id="breakMinutes"
@@ -798,37 +821,37 @@ export default function App() {
                       placeholder="0"
                       value={breakMinutes}
                       onChange={(e) => setBreakMinutes(e.target.value)}
-                      className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white"
+                      className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white text-left rtl:text-right"
                     />
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="startTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Time</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="startTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.startTime}</label>
                         <input 
                         id="startTime"
                         type="time" 
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
 
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="endTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">End Time</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="endTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.endTime}</label>
                         <input 
                         id="endTime"
                         type="time" 
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-                  <div className="text-center md:text-left">
+                  <div className="text-center md:text-left rtl:md:text-right">
                     {(() => {
                         const totalTemp = calculateHours(startTime, endTime, parseInt(breakMinutes) || 0);
                         const isOtDayPreview = otDays.includes(parseLocalDate(selectedDate).getDay());
@@ -837,14 +860,14 @@ export default function App() {
                         
                         return (
                             <>
-                                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] font-black">Day Total</p>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] font-black">{t.totalHours}</p>
                                 <div className="flex items-baseline justify-center md:justify-start gap-2">
                                     <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">
-                                      {totalTemp.toFixed(2)} <span className="text-lg font-bold">Hrs</span>
+                                      {totalTemp.toFixed(2)} <span className="text-lg font-bold">{lang === 'ar' ? 'ساعة' : 'Hrs'}</span>
                                     </p>
                                     {otTemp > 0 && (
                                       <span className="text-sm font-bold text-amber-500">
-                                        (+{otTemp.toFixed(2)} OT)
+                                        (+{otTemp.toFixed(2)} {lang === 'ar' ? 'إضافي' : 'OT'})
                                       </span>
                                     )}
                                 </div>
@@ -858,7 +881,7 @@ export default function App() {
                       className="group w-full md:w-auto inline-flex items-center justify-center gap-3 px-10 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform"
                     >
                       {editingLogId ? <Edit2 size={24} /> : <PlusCircle size={24} />}
-                      {editingLogId ? 'Update Entry' : 'Add Entry'}
+                      {editingLogId ? t.editEntry : t.addEntry}
                     </button>
                     {editingLogId && (
                       <button 
@@ -870,7 +893,7 @@ export default function App() {
                         }}
                         className="text-sm font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                       >
-                        Cancel Edit
+                        {t.cancel}
                       </button>
                     )}
                   </div>
@@ -928,12 +951,12 @@ export default function App() {
             >
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 md:p-8 border border-slate-100 dark:border-slate-700 relative overflow-hidden">
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
-                    <Download className="text-indigo-500 dark:text-indigo-400" /> Export Data
+                    <Download className="text-indigo-500 dark:text-indigo-400" /> {t.export}
                 </h3>
 
                 <div className="space-y-6 relative z-10">
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="exportStartDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">Start Date</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="exportStartDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.startTime} ({t.date})</label>
                         <input 
                         id="exportStartDate"
                         type="date" 
@@ -943,8 +966,8 @@ export default function App() {
                         />
                     </div>
 
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="exportEndDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">End Date</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="exportEndDate" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.endTime} ({t.date})</label>
                         <input 
                         id="exportEndDate"
                         type="date" 
@@ -960,7 +983,7 @@ export default function App() {
                     onClick={exportCSV}
                     className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-4 sm:py-5 bg-indigo-600 text-white font-black rounded-2xl sm:rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform text-sm sm:text-base"
                   >
-                    <Download size={20} /> Download CSV
+                    <Download size={20} /> {t.export}
                   </button>
                 </div>
               </div>
@@ -975,54 +998,93 @@ export default function App() {
             >
               <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none p-6 md:p-8 border border-slate-100 dark:border-slate-700 relative overflow-hidden">
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 relative z-10">
-                    <Settings className="text-indigo-500 dark:text-indigo-400" /> Settings
-                </h3>                <div className="space-y-6 relative z-10">
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="defaultStartTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Start Time</label>
+                    <Settings className="text-indigo-500 dark:text-indigo-400" /> {t.settings}
+                </h3>
+                
+                <div className="space-y-8 relative z-10">
+                    {/* Appearance & Language */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-6 border-b border-slate-100 dark:border-slate-700/50">
+                        <div className="space-y-3">
+                            <label className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t.language}</label>
+                            <div className="flex bg-slate-100 dark:bg-slate-900 rounded-xl p-1 gap-1">
+                                <button 
+                                    onClick={() => setLang('en')}
+                                    className={`flex-1 py-2 px-4 rounded-lg font-bold text-sm transition-all ${lang === 'en' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    English
+                                </button>
+                                <button 
+                                    onClick={() => setLang('ar')}
+                                    className={`flex-1 py-2 px-4 rounded-lg font-bold text-sm transition-all ${lang === 'ar' ? 'bg-white dark:bg-slate-800 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    العربية
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t.darkMode}</label>
+                            <button 
+                                onClick={() => setIsDarkMode(!isDarkMode)}
+                                className="w-full flex items-center justify-between p-3 bg-slate-100 dark:bg-slate-900 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-900/50 transition-colors"
+                            >
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                    {isDarkMode ? t.darkMode : t.lightMode}
+                                </span>
+                                <div className={`p-1.5 rounded-lg ${isDarkMode ? 'bg-indigo-500 text-white' : 'bg-amber-500 text-white'}`}>
+                                    {isDarkMode ? <Moon size={18} /> : <Sun size={18} />}
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="space-y-2 text-left rtl:text-right">
+                            <label htmlFor="defaultStartTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.defaultStart}</label>
                         <input 
                         id="defaultStartTime"
                         type="time" 
                         value={defaultStartTime}
                         onChange={(e) => setDefaultStartTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
 
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="defaultEndTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default End Time</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="defaultEndTime" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.defaultEnd}</label>
                         <input 
                         id="defaultEndTime"
                         type="time" 
                         value={defaultEndTime}
                         onChange={(e) => setDefaultEndTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="defaultBreakMinutes" className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Break (Minutes)</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="defaultBreakMinutes" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.defaultBreak}</label>
                         <input 
                         id="defaultBreakMinutes"
                         type="number" 
                         value={defaultBreakMinutes}
                         onChange={(e) => setDefaultBreakMinutes(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
-                    <div className="space-y-2 text-left">
-                        <label htmlFor="payPeriodStartDay" className="text-sm font-medium text-slate-700 dark:text-slate-300">Cycle Start Day (1-31)</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="payPeriodStartDay" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.payPeriodStart} (1-31)</label>
                         <input 
                         id="payPeriodStartDay"
                         type="number" 
                         min="1" max="31"
                         value={payPeriodStartDay}
                         onChange={(e) => setPayPeriodStartDay(parseInt(e.target.value) || 1)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
                     </div>
-                    <div className="space-y-2 text-left">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">OT Days (Weekends)</label>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.overtimeThreshold}</label>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
+                            {t.days.map((day, index) => (
                                 <label key={day} className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent has-[:checked]:border-indigo-500/30 has-[:checked]:bg-indigo-50/50 dark:has-[:checked]:bg-indigo-900/20">
                                     <input 
                                         type="checkbox" 
@@ -1034,10 +1096,11 @@ export default function App() {
                                         }}
                                         className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                     />
-                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{day.substring(0, 3)}</span>
+                                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{day}</span>
                                 </label>
                             ))}
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -1046,7 +1109,7 @@ export default function App() {
                     onClick={() => setView('calendar')}
                     className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 px-6 sm:px-10 py-4 sm:py-5 bg-indigo-600 text-white font-black rounded-2xl sm:rounded-3xl hover:bg-indigo-700 active:scale-95 transition-all shadow-xl shadow-indigo-200 dark:shadow-none transform text-sm sm:text-base"
                   >
-                    Done
+                    {t.save}
                   </button>
                 </div>
               </div>

@@ -14,6 +14,28 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
 
 export const googleProvider = new GoogleAuthProvider();
 
+/**
+ * Detects if third-party cookies or storage might be blocked.
+ * This is a common cause for Firebase Auth failures in iframes or mobile browsers.
+ */
+export const checkStorageAccess = async (): Promise<boolean> => {
+    try {
+        // Try to access localStorage - will throw if blocked in some contexts
+        localStorage.setItem('test_storage', 'test');
+        localStorage.removeItem('test_storage');
+        
+        // If we are in an iframe, we check for storage access API if available
+        if (window.self !== window.top && 'hasStorageAccess' in document) {
+            return await (document as any).hasStorageAccess();
+        }
+        
+        return true;
+    } catch (e) {
+        console.warn("Storage access appears to be restricted:", e);
+        return false;
+    }
+};
+
 getRedirectResult(auth).then((result) => {
     if (result) {
         console.log("Successfully logged in via redirect");
