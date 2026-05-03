@@ -206,15 +206,43 @@ export default function App() {
     const unsub = onSnapshot(settingsRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.defaultStartTime) setDefaultStartTime(data.defaultStartTime);
-        if (data.defaultEndTime) setDefaultEndTime(data.defaultEndTime);
-        if (data.defaultBreakMinutes) setDefaultBreakMinutes(data.defaultBreakMinutes.toString());
-        if (data.payPeriodStartDay) setPayPeriodStartDay(data.payPeriodStartDay);
-        if (data.otDays) setOtDays(data.otDays);
-        if (data.lang) setLang(data.lang);
-        if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
-        if (data.reminderTime !== undefined) setReminderTime(data.reminderTime);
-        if (data.calendarViewMode !== undefined) setCalendarViewMode(data.calendarViewMode);
+        if (data.defaultStartTime) {
+            setDefaultStartTime(data.defaultStartTime);
+            localStorage.setItem('defaultStartTime', data.defaultStartTime);
+        }
+        if (data.defaultEndTime) {
+            setDefaultEndTime(data.defaultEndTime);
+            localStorage.setItem('defaultEndTime', data.defaultEndTime);
+        }
+        if (data.defaultBreakMinutes !== undefined) {
+            const val = data.defaultBreakMinutes.toString();
+            setDefaultBreakMinutes(val);
+            localStorage.setItem('defaultBreakMinutes', val);
+        }
+        if (data.payPeriodStartDay) {
+            setPayPeriodStartDay(data.payPeriodStartDay);
+            localStorage.setItem('payPeriodStartDay', data.payPeriodStartDay.toString());
+        }
+        if (data.otDays) {
+            setOtDays(data.otDays);
+            localStorage.setItem('otDays', JSON.stringify(data.otDays));
+        }
+        if (data.lang) {
+            setLang(data.lang);
+            localStorage.setItem('language', data.lang);
+        }
+        if (data.isDarkMode !== undefined) {
+            setIsDarkMode(data.isDarkMode);
+            localStorage.setItem('theme', data.isDarkMode ? 'dark' : 'light');
+        }
+        if (data.reminderTime !== undefined) {
+            setReminderTime(data.reminderTime);
+            localStorage.setItem('reminderTime', data.reminderTime);
+        }
+        if (data.calendarViewMode !== undefined) {
+            setCalendarViewMode(data.calendarViewMode);
+            localStorage.setItem('calendarViewMode', data.calendarViewMode);
+        }
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return unsub;
@@ -372,18 +400,42 @@ export default function App() {
         }
       }
 
+      // Helper to get local setting with fallback to current state
+      const getLocalSetting = (key: string, current: any, parser: (v: string) => any = (v) => v) => {
+        const stored = localStorage.getItem(key);
+        if (stored === null) return current;
+        try {
+          return parser(stored);
+        } catch {
+          return current;
+        }
+      };
+
       // Sync Settings
       const settingsRef = doc(db, 'users', user.uid, 'settings', 'config');
+      
+      const storedTheme = localStorage.getItem('theme');
+      const finalIsDarkMode = storedTheme === null ? isDarkMode : storedTheme === 'dark';
+      
+      let finalOtDays = otDays;
+      const storedOtDays = localStorage.getItem('otDays');
+      if (storedOtDays) {
+        finalOtDays = JSON.parse(storedOtDays);
+      } else {
+        const storedOtDay = localStorage.getItem('otDay'); // Legacy
+        if (storedOtDay) finalOtDays = [parseInt(storedOtDay, 10)];
+      }
+
       batch.set(settingsRef, {
-        defaultStartTime: localStorage.getItem('defaultStartTime') || defaultStartTime,
-        defaultEndTime: localStorage.getItem('defaultEndTime') || defaultEndTime,
-        defaultBreakMinutes: parseInt(localStorage.getItem('defaultBreakMinutes') || defaultBreakMinutes.toString()) || 0,
-        payPeriodStartDay: parseInt(localStorage.getItem('payPeriodStartDay') || payPeriodStartDay.toString(), 10) || 19,
-        otDays: JSON.parse(localStorage.getItem('otDays') || JSON.stringify(otDays)),
-        lang: (localStorage.getItem('language') as Language) || lang,
-        isDarkMode: localStorage.getItem('theme') === 'dark' || isDarkMode,
-        reminderTime: localStorage.getItem('reminderTime') || reminderTime,
-        calendarViewMode: (localStorage.getItem('calendarViewMode') as 'month' | 'cycle') || calendarViewMode
+        defaultStartTime: getLocalSetting('defaultStartTime', defaultStartTime),
+        defaultEndTime: getLocalSetting('defaultEndTime', defaultEndTime),
+        defaultBreakMinutes: getLocalSetting('defaultBreakMinutes', parseInt(defaultBreakMinutes) || 0, (v) => parseInt(v) || 0),
+        payPeriodStartDay: getLocalSetting('payPeriodStartDay', payPeriodStartDay, (v) => parseInt(v, 10) || 19),
+        otDays: finalOtDays,
+        lang: getLocalSetting('language', lang) as Language,
+        isDarkMode: finalIsDarkMode,
+        reminderTime: getLocalSetting('reminderTime', reminderTime),
+        calendarViewMode: getLocalSetting('calendarViewMode', calendarViewMode) as 'month' | 'cycle'
       }, { merge: true });
       haveChanges = true;
 

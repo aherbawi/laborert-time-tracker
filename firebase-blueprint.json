@@ -9,9 +9,13 @@
         "otDays": { "type": "array", "items": { "type": "number" } },
         "defaultStartTime": { "type": "string" },
         "defaultEndTime": { "type": "string" },
-        "defaultBreakMinutes": { "type": "number", "type": ["number", "string"] }
+        "defaultBreakMinutes": { "type": "number" },
+        "lang": { "type": "string" },
+        "isDarkMode": { "type": "boolean" },
+        "reminderTime": { "type": "string" },
+        "calendarViewMode": { "type": "string", "enum": ["month", "cycle"] }
       },
-      "required": ["payPeriodStartDay", "otDays", "defaultStartTime", "defaultEndTime", "defaultBreakMinutes"]
+      "required": ["payPeriodStartDay", "otDays", "defaultStartTime", "defaultEndTime", "defaultBreakMinutes", "lang", "isDarkMode", "calendarViewMode"]
     },
     "Log": {
       "title": "Time Log",

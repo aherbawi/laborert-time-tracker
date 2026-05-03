@@ -20,7 +20,11 @@ service cloud.firestore {
           && (!data.keys().hasAny(['otDays']) || (data.otDays is list && data.otDays.size() <= 7))
           && (!data.keys().hasAny(['defaultStartTime']) || (data.defaultStartTime is string && data.defaultStartTime.size() <= 10))
           && (!data.keys().hasAny(['defaultEndTime']) || (data.defaultEndTime is string && data.defaultEndTime.size() <= 10))
-          && (!data.keys().hasAny(['defaultBreakMinutes']) || (data.defaultBreakMinutes is number || data.defaultBreakMinutes is string));
+          && (!data.keys().hasAny(['defaultBreakMinutes']) || (data.defaultBreakMinutes is number || data.defaultBreakMinutes is string))
+          && (!data.keys().hasAny(['lang']) || (data.lang is string && data.lang.size() <= 5))
+          && (!data.keys().hasAny(['isDarkMode']) || data.isDarkMode is bool)
+          && (!data.keys().hasAny(['reminderTime']) || (data.reminderTime is string && data.reminderTime.size() <= 10))
+          && (!data.keys().hasAny(['calendarViewMode']) || (data.calendarViewMode is string && data.calendarViewMode.size() <= 10));
     }
 
     function isValidLog(data, userId) {
