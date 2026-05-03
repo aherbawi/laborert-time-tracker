@@ -44,6 +44,9 @@ export const translations = {
     reminderTimeDesc: 'Notify if no log entered by this time. Empty to disable.',
     notificationTitle: 'Log Reminder',
     notificationBody: 'Don\'t forget to log your work hours for today!',
+    calendarViewMode: 'Calendar View Mode',
+    calendarViewMonth: 'Calendar Month',
+    calendarViewCycle: 'Pay Period Cycle',
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     months: [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -92,6 +95,9 @@ export const translations = {
     reminderTimeDesc: 'إرسال إشعار إذا لم يتم إدخال سجل بحلول هذا الوقت. اترك الحقل فارغاً للتعطيل.',
     notificationTitle: 'تذكير السجل',
     notificationBody: 'لا تنس إدخال ساعات عملك لهذا اليوم!',
+    calendarViewMode: 'طريقة عرض التقويم',
+    calendarViewMonth: 'الأشهر الميلادية',
+    calendarViewCycle: 'دورة الراتب',
     days: ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
     months: [
       'كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران',

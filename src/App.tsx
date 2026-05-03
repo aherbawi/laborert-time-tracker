@@ -119,6 +119,10 @@ export default function App() {
     if (typeof window !== 'undefined') return parseInt(localStorage.getItem('payPeriodStartDay') || '19', 10);
     return 19;
   });
+  const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'cycle'>(() => {
+    if (typeof window !== 'undefined') return (localStorage.getItem('calendarViewMode') as 'month' | 'cycle') || 'month';
+    return 'month';
+  });
   const [otDays, setOtDays] = useState<number[]>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('otDays');
@@ -210,6 +214,7 @@ export default function App() {
         if (data.lang) setLang(data.lang);
         if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
         if (data.reminderTime !== undefined) setReminderTime(data.reminderTime);
+        if (data.calendarViewMode !== undefined) setCalendarViewMode(data.calendarViewMode);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${user.uid}/settings/config`));
     return unsub;
@@ -227,9 +232,14 @@ export default function App() {
       otDays,
       lang,
       isDarkMode,
-      reminderTime
+      reminderTime,
+      calendarViewMode
     }, { merge: true }).catch(error => handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/settings/config`));
-  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays, lang, isDarkMode, reminderTime]);
+  }, [user, defaultStartTime, defaultEndTime, defaultBreakMinutes, payPeriodStartDay, otDays, lang, isDarkMode, reminderTime, calendarViewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('calendarViewMode', calendarViewMode);
+  }, [calendarViewMode]);
 
   useEffect(() => {
     localStorage.setItem('reminderTime', reminderTime);
@@ -372,7 +382,8 @@ export default function App() {
         otDays: JSON.parse(localStorage.getItem('otDays') || JSON.stringify(otDays)),
         lang: (localStorage.getItem('language') as Language) || lang,
         isDarkMode: localStorage.getItem('theme') === 'dark' || isDarkMode,
-        reminderTime: localStorage.getItem('reminderTime') || reminderTime
+        reminderTime: localStorage.getItem('reminderTime') || reminderTime,
+        calendarViewMode: (localStorage.getItem('calendarViewMode') as 'month' | 'cycle') || calendarViewMode
       }, { merge: true });
       haveChanges = true;
 
@@ -571,19 +582,39 @@ export default function App() {
 
   // Calendar Logic
   const daysInMonth = useMemo(() => {
+    const today = new Date();
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1).getDay();
-    const totalDays = new Date(year, month + 1, 0).getDate();
+    
+    // Determine the start and end dates based on the view mode
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (calendarViewMode === 'cycle') {
+        const cycleStart = new Date(year, month, payPeriodStartDay);
+        // If currentMonth is earlier than today, check logic.
+        // Easiest is to go from payPeriodStartDay to next month's payPeriodStartDay - 1
+        startDate = new Date(year, month, payPeriodStartDay);
+        // adjust if we are before cycle in the current month?
+        // Let's just render the grid: 
+        // 1 month of cycle corresponds to the currentMonth state.
+        endDate = new Date(year, month + 1, payPeriodStartDay - 1);
+    } else {
+        startDate = new Date(year, month, 1);
+        endDate = new Date(year, month + 1, 0);
+    }
+    
+    const firstDay = startDate.getDay();
+    const totalDays = Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
     
     const days = [];
     for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let i = 1; i <= totalDays; i++) {
-        const d = new Date(year, month, i);
+    for (let i = 0; i < totalDays; i++) {
+        const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
         days.push(getLocalDateString(d));
     }
     return days;
-  }, [currentMonth]);
+  }, [currentMonth, calendarViewMode, payPeriodStartDay]);
 
   const changeMonth = (offset: number) => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + offset, 1));
@@ -1198,6 +1229,18 @@ export default function App() {
                                 </button>
                             )}
                         </div>
+                    </div>
+                    <div className="space-y-2 text-left rtl:text-right">
+                        <label htmlFor="calendarViewMode" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.calendarViewMode}</label>
+                        <select
+                            id="calendarViewMode"
+                            value={calendarViewMode}
+                            onChange={(e) => setCalendarViewMode(e.target.value as 'month' | 'cycle')}
+                            className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white appearance-none select-custom text-left rtl:text-right"
+                        >
+                            <option value="month">{t.calendarViewMonth}</option>
+                            <option value="cycle">{t.calendarViewCycle}</option>
+                        </select>
                     </div>
                     <div className="space-y-2 text-left rtl:text-right">
                         <label htmlFor="payPeriodStartDay" className="text-sm font-medium text-slate-700 dark:text-slate-300">{t.payPeriodStart} (1-31)</label>
