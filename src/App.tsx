@@ -1305,14 +1305,25 @@ export default function App() {
                                         {lang === "ar" ? "س" : "h"}
                                       </span>
                                     </span>
-                                    {dayLogs.some((l) => l.overtimeHours) && (
+                                    {dayLogs.some((l) => {
+                                      const dsh = parseFloat(dailyStandardHours) || 8;
+                                      if (l.isDayOff) return false;
+                                      if (l.isWholeDayOT) return l.totalHours > 0;
+                                      if (l.overtimeHours !== undefined && l.overtimeHours > 0) return true;
+                                      return (l.totalHours || 0) > dsh;
+                                    }) && (
                                       <span
                                         className={`font-bold text-amber-100 bg-amber-600 dark:bg-amber-700/80 px-1.5 py-0.5 rounded-full inline-flex items-center leading-none border border-amber-700 shadow-sm ${lang === "ar" ? "text-[9px] sm:text-[10px]" : "text-[8px] sm:text-[10px]"}`}
                                       >
                                         {dayLogs
                                           .reduce(
-                                            (sum, l) =>
-                                              sum + (l.overtimeHours || 0),
+                                            (sum, l) => {
+                                              const dsh = parseFloat(dailyStandardHours) || 8;
+                                              if (l.isDayOff) return sum;
+                                              if (l.isWholeDayOT) return sum + l.totalHours;
+                                              if (l.overtimeHours !== undefined && l.overtimeHours > 0) return sum + l.overtimeHours;
+                                              return sum + Math.max(0, (l.totalHours || 0) - dsh);
+                                            },
                                             0,
                                           )
                                           .toFixed(1)}
@@ -1718,11 +1729,21 @@ export default function App() {
                                     {t.otDayWhole}
                                   </span>
                                 )}
-                                {log.overtimeHours ? (
-                                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
-                                    {log.overtimeHours}h OT
-                                  </span>
-                                ) : null}
+                                {(() => {
+                                  const dsh = parseFloat(dailyStandardHours) || 8;
+                                  let otValue = 0;
+                                  if (!log.isDayOff) {
+                                    if (log.isWholeDayOT) otValue = log.totalHours;
+                                    else if (log.overtimeHours !== undefined && log.overtimeHours > 0) otValue = log.overtimeHours;
+                                    else otValue = Math.max(0, log.totalHours - dsh);
+                                  }
+                                  
+                                  return otValue > 0 ? (
+                                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                                      {otValue.toFixed(2)}h {lang === 'ar' ? 'إضافي' : 'OT'}
+                                    </span>
+                                  ) : null;
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -1863,178 +1884,198 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="defaultStartTime"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.defaultStart}
-                      </label>
-                      <input
-                        id="defaultStartTime"
-                        type="time"
-                        value={defaultStartTime}
-                        onChange={(e) => setDefaultStartTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
-                      />
-                    </div>
-
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="defaultEndTime"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.defaultEnd}
-                      </label>
-                      <input
-                        id="defaultEndTime"
-                        type="time"
-                        value={defaultEndTime}
-                        onChange={(e) => setDefaultEndTime(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
-                      />
-                    </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="defaultBreakMinutes"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.defaultBreak}
-                      </label>
-                      <input
-                        id="defaultBreakMinutes"
-                        type="number"
-                        value={defaultBreakMinutes}
-                        onChange={(e) => setDefaultBreakMinutes(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
-                      />
-                    </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="reminderTime"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.reminderTime}
-                        <span className="block text-xs text-slate-500 font-normal mt-1">
-                          {t.reminderTimeDesc}
-                        </span>
-                      </label>
-                      <div className="relative">
+                  <div className="space-y-8">
+                    {/* Time Settings */}
+                    <div className="space-y-6">
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="defaultStartTime"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.defaultStart}
+                        </label>
                         <input
-                          id="reminderTime"
+                          id="defaultStartTime"
                           type="time"
-                          value={reminderTime}
-                          onChange={(e) => {
-                            setReminderTime(e.target.value);
-                            if (
-                              e.target.value &&
-                              "Notification" in window &&
-                              Notification.permission === "default"
-                            ) {
-                              Notification.requestPermission();
-                            }
-                          }}
-                          className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                          value={defaultStartTime}
+                          onChange={(e) => setDefaultStartTime(e.target.value)}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
-                        {reminderTime && (
-                          <button
-                            onClick={() => setReminderTime("")}
-                            className={`absolute top-1/2 -translate-y-1/2 ${lang === "ar" ? "left-3" : "right-3"} p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors`}
-                            title={lang === "ar" ? "مسح" : "Clear"}
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
+                      </div>
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="defaultEndTime"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.defaultEnd}
+                        </label>
+                        <input
+                          id="defaultEndTime"
+                          type="time"
+                          value={defaultEndTime}
+                          onChange={(e) => setDefaultEndTime(e.target.value)}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                        />
+                      </div>
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="defaultBreakMinutes"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.defaultBreak}
+                        </label>
+                        <input
+                          id="defaultBreakMinutes"
+                          type="number"
+                          value={defaultBreakMinutes}
+                          onChange={(e) => setDefaultBreakMinutes(e.target.value)}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                        />
+                      </div>
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="dailyStandardHours"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.dailyStandardHours}
+                        </label>
+                        <input
+                          id="dailyStandardHours"
+                          type="number"
+                          step="0.5"
+                          placeholder="8"
+                          value={dailyStandardHours}
+                          onChange={(e) => setDailyStandardHours(e.target.value)}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="calendarViewMode"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.calendarViewMode}
-                      </label>
-                      <select
-                        id="calendarViewMode"
-                        value={calendarViewMode}
-                        onChange={(e) => {
-                          const newMode = e.target.value as "month" | "cycle";
-                          setCalendarViewMode(newMode);
-                          const today = new Date();
-                          if (newMode === 'cycle') {
-                              if (today.getDate() < payPeriodStartDay) {
-                                  setCurrentMonth(new Date(today.getFullYear(), today.getMonth() - 1, 1));
-                              } else {
-                                  setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                              }
-                          } else {
-                              setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-                          }
-                        }}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white appearance-none select-custom text-left rtl:text-right"
-                      >
-                        <option value="month">{t.calendarViewMonth}</option>
-                        <option value="cycle">{t.calendarViewCycle}</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="payPeriodStartDay"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.payPeriodStart} (1-31)
-                      </label>
-                      <input
-                        id="payPeriodStartDay"
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={payPeriodStartDay}
-                        onChange={(e) =>
-                          setPayPeriodStartDay(parseInt(e.target.value) || 1)
-                        }
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
-                      />
-                    </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="hourlyRate"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.hourlyRate}
-                      </label>
-                      <div className="relative">
+
+                    <hr className="border-slate-100 dark:border-slate-700/50" />
+
+                    {/* Calendar Settings */}
+                    <div className="space-y-6">
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="payPeriodStartDay"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.payPeriodStart} (1-31)
+                        </label>
                         <input
-                          id="hourlyRate"
+                          id="payPeriodStartDay"
                           type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={hourlyRate}
-                          onChange={(e) => setHourlyRate(e.target.value)}
-                          className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                          min="1"
+                          max="31"
+                          value={payPeriodStartDay}
+                          onChange={(e) =>
+                            setPayPeriodStartDay(parseInt(e.target.value) || 1)
+                          }
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                         />
-                        <div className={`absolute top-1/2 -translate-y-1/2 ${lang === "ar" ? "left-4" : "right-4"} font-bold text-slate-400`}>
-                          {t.currency}
+                      </div>
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="calendarViewMode"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.calendarViewMode}
+                        </label>
+                        <select
+                          id="calendarViewMode"
+                          value={calendarViewMode}
+                          onChange={(e) => {
+                            const newMode = e.target.value as "month" | "cycle";
+                            setCalendarViewMode(newMode);
+                            const today = new Date();
+                            if (newMode === 'cycle') {
+                                if (today.getDate() < payPeriodStartDay) {
+                                    setCurrentMonth(new Date(today.getFullYear(), today.getMonth() - 1, 1));
+                                } else {
+                                    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                                }
+                            } else {
+                                setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                            }
+                          }}
+                          className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white appearance-none select-custom text-left rtl:text-right"
+                        >
+                          <option value="month">{t.calendarViewMonth}</option>
+                          <option value="cycle">{t.calendarViewCycle}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <hr className="border-slate-100 dark:border-slate-700/50" />
+
+                    {/* Financial Settings */}
+                    <div className="space-y-6">
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="hourlyRate"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.hourlyRate}
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="hourlyRate"
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={hourlyRate}
+                            onChange={(e) => setHourlyRate(e.target.value)}
+                            className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                          />
+                          <div className={`absolute top-1/2 -translate-y-1/2 ${lang === "ar" ? "left-4" : "right-4"} font-bold text-slate-400`}>
+                            {t.currency}
+                          </div>
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label
-                        htmlFor="dailyStandardHours"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        {t.dailyStandardHours}
-                      </label>
-                      <input
-                        id="dailyStandardHours"
-                        type="number"
-                        step="0.5"
-                        placeholder="8"
-                        value={dailyStandardHours}
-                        onChange={(e) => setDailyStandardHours(e.target.value)}
-                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
-                      />
+
+                    <hr className="border-slate-100 dark:border-slate-700/50" />
+
+                    {/* Notification Settings */}
+                    <div className="space-y-6">
+                      <div className="space-y-2 text-left rtl:text-right">
+                        <label
+                          htmlFor="reminderTime"
+                          className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                        >
+                          {t.reminderTime}
+                          <span className="block text-xs text-slate-500 font-normal mt-1">
+                            {t.reminderTimeDesc}
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="reminderTime"
+                            type="time"
+                            value={reminderTime}
+                            onChange={(e) => {
+                              setReminderTime(e.target.value);
+                              if (
+                                e.target.value &&
+                                "Notification" in window &&
+                                Notification.permission === "default"
+                              ) {
+                                Notification.requestPermission();
+                              }
+                            }}
+                            className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                          />
+                          {reminderTime && (
+                            <button
+                              onClick={() => setReminderTime("")}
+                              className={`absolute top-1/2 -translate-y-1/2 ${lang === "ar" ? "left-3" : "right-3"} p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors`}
+                              title={lang === "ar" ? "مسح" : "Clear"}
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

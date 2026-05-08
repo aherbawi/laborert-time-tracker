@@ -24,7 +24,9 @@ service cloud.firestore {
           && (!data.keys().hasAny(['lang']) || (data.lang is string && data.lang.size() <= 5))
           && (!data.keys().hasAny(['isDarkMode']) || data.isDarkMode is bool)
           && (!data.keys().hasAny(['reminderTime']) || (data.reminderTime is string && data.reminderTime.size() <= 10))
-          && (!data.keys().hasAny(['calendarViewMode']) || (data.calendarViewMode is string && data.calendarViewMode.size() <= 10));
+          && (!data.keys().hasAny(['calendarViewMode']) || (data.calendarViewMode is string && data.calendarViewMode.size() <= 10))
+          && (!data.keys().hasAny(['hourlyRate']) || (data.hourlyRate is number || data.hourlyRate == null))
+          && (!data.keys().hasAny(['dailyStandardHours']) || (data.dailyStandardHours is number || data.dailyStandardHours == null));
     }
 
     function isValidLog(data, userId) {
