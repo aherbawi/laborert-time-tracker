@@ -6,5 +6,7 @@ export interface WorkLog {
   breakMinutes: number;
   totalHours: number;
   overtimeHours?: number;
+  isDayOff?: boolean;
+  isWholeDayOT?: boolean;
   timestamp: number;
 }

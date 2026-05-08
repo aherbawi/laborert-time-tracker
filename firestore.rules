@@ -38,7 +38,9 @@ service cloud.firestore {
           && (data.totalHours is number || data.totalHours is string)
           && (!data.keys().hasAny(['timestamp']) || data.timestamp is number)
           && (!data.keys().hasAny(['createdAt']) || data.createdAt is string)
-          && (!data.keys().hasAny(['overtimeHours']) || data.overtimeHours is number || data.overtimeHours is string);
+          && (!data.keys().hasAny(['overtimeHours']) || data.overtimeHours is number || data.overtimeHours is string)
+          && (!data.keys().hasAny(['isDayOff']) || data.isDayOff is bool)
+          && (!data.keys().hasAny(['isWholeDayOT']) || data.isWholeDayOT is bool);
     }
 
     match /users/{userId} {

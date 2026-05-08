@@ -30,7 +30,10 @@
         "breakMinutes": { "type": "number", "type": ["number", "string"] },
         "totalHours": { "type": "number" },
         "overtimeHours": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "isDayOff": { "type": "boolean" },
+        "isWholeDayOT": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "timestamp": { "type": "number" }
       },
       "required": ["id", "userId", "date", "startTime", "endTime", "breakMinutes", "totalHours"]
     }

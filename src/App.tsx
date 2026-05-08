@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Check,
   X,
+  Palmtree,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { WorkLog } from "./types";
@@ -197,25 +198,52 @@ export default function App() {
       return "month";
     },
   );
-  const [otDays, setOtDays] = useState<number[]>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("otDays");
-      if (stored) return JSON.parse(stored);
-      const oldStored = localStorage.getItem("otDay");
-      if (oldStored) return [parseInt(oldStored, 10)];
-      return [5];
-    }
-    return [5];
-  });
-
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [endTime, setEndTime] = useState(defaultEndTime);
   const [breakMinutes, setBreakMinutes] = useState<string>(defaultBreakMinutes);
   const [logs, setLogs] = useState<WorkLog[]>([]);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [isDayOff, setIsDayOff] = useState(false);
+  const [isWholeDayOT, setIsWholeDayOT] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [showSignInHelp, setShowSignInHelp] = useState(false);
+
+  // Migration for legacy OT days
+  useEffect(() => {
+    if (logs.length > 0 && !localStorage.getItem("migration_ot_v2_done")) {
+      const storedOtDaysStr = localStorage.getItem("otDays");
+      if (storedOtDaysStr) {
+        try {
+          const storedOtDays = JSON.parse(storedOtDaysStr) as number[];
+          if (Array.isArray(storedOtDays) && storedOtDays.length > 0) {
+            const migratedLogs = logs.map(log => {
+              const day = parseLocalDate(log.date).getDay();
+              if (storedOtDays.includes(day)) {
+                return { 
+                  ...log, 
+                  isWholeDayOT: true,
+                  overtimeHours: log.totalHours 
+                };
+              }
+              return log;
+            });
+
+            const hasChanged = JSON.stringify(logs) !== JSON.stringify(migratedLogs);
+            if (hasChanged) {
+              setLogs(migratedLogs);
+              if (!user) {
+                localStorage.setItem("work_logs", JSON.stringify(migratedLogs));
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Migration error:", e);
+        }
+      }
+      localStorage.setItem("migration_ot_v2_done", "true");
+    }
+  }, [logs, user]);
 
   const [reminderTime, setReminderTime] = useState(() => {
     if (typeof window !== "undefined")
@@ -243,6 +271,7 @@ export default function App() {
     checkAccess();
 
     const unsub = onAuthStateChanged(auth, (u) => {
+      console.log("Auth state changed:", u ? `User: ${u.email}` : "No user");
       setUser(u);
       setAuthLoading(false);
     });
@@ -271,7 +300,9 @@ export default function App() {
                 : data.breakMinutes,
             totalHours: data.totalHours,
             overtimeHours: data.overtimeHours,
-            timestamp: new Date(data.createdAt || Date.now()).getTime(),
+            isDayOff: data.isDayOff,
+            isWholeDayOT: data.isWholeDayOT,
+            timestamp: data.timestamp || new Date(data.createdAt || Date.now()).getTime(),
           });
         });
         dbLogs.sort((a, b) => b.date.localeCompare(a.date));
@@ -316,10 +347,6 @@ export default function App() {
               data.payPeriodStartDay.toString(),
             );
           }
-          if (data.otDays) {
-            setOtDays(data.otDays);
-            localStorage.setItem("otDays", JSON.stringify(data.otDays));
-          }
           if (data.lang) {
             setLang(data.lang);
             localStorage.setItem("language", data.lang);
@@ -359,7 +386,6 @@ export default function App() {
         defaultEndTime,
         defaultBreakMinutes: parseInt(defaultBreakMinutes) || 0,
         payPeriodStartDay,
-        otDays,
         lang,
         isDarkMode,
         reminderTime,
@@ -379,7 +405,6 @@ export default function App() {
     defaultEndTime,
     defaultBreakMinutes,
     payPeriodStartDay,
-    otDays,
     lang,
     isDarkMode,
     reminderTime,
@@ -415,11 +440,6 @@ export default function App() {
     if (!user && !authLoading)
       localStorage.setItem("payPeriodStartDay", payPeriodStartDay.toString());
   }, [payPeriodStartDay, user, authLoading]);
-
-  useEffect(() => {
-    if (!user && !authLoading)
-      localStorage.setItem("otDays", JSON.stringify(otDays));
-  }, [otDays, user, authLoading]);
 
   // Apply dark mode theme
   useEffect(() => {
@@ -530,6 +550,8 @@ export default function App() {
               breakMinutes: Number(log.breakMinutes),
               totalHours: log.totalHours,
               overtimeHours: log.overtimeHours,
+              isDayOff: !!log.isDayOff,
+              isWholeDayOT: !!log.isWholeDayOT,
               createdAt: existingLog ? undefined : new Date().toISOString(),
             },
             { merge: true },
@@ -560,15 +582,6 @@ export default function App() {
       const finalIsDarkMode =
         storedTheme === null ? isDarkMode : storedTheme === "dark";
 
-      let finalOtDays = otDays;
-      const storedOtDays = localStorage.getItem("otDays");
-      if (storedOtDays) {
-        finalOtDays = JSON.parse(storedOtDays);
-      } else {
-        const storedOtDay = localStorage.getItem("otDay"); // Legacy
-        if (storedOtDay) finalOtDays = [parseInt(storedOtDay, 10)];
-      }
-
       batch.set(
         settingsRef,
         {
@@ -587,7 +600,6 @@ export default function App() {
             payPeriodStartDay,
             (v) => parseInt(v, 10) || 21,
           ),
-          otDays: finalOtDays,
           lang: getLocalSetting("language", lang) as Language,
           isDarkMode: finalIsDarkMode,
           reminderTime: getLocalSetting("reminderTime", reminderTime),
@@ -624,18 +636,9 @@ export default function App() {
   };
 
   const handleSave = async () => {
-    const brk = parseInt(breakMinutes) || 0;
-    const total = calculateHours(startTime, endTime, brk);
-    const parsedDate = parseLocalDate(selectedDate);
-    const isOtDay = otDays.includes(parsedDate.getDay());
-    const standard = isOtDay
-      ? 0
-      : calculateHours(
-          defaultStartTime,
-          defaultEndTime,
-          parseInt(defaultBreakMinutes) || 0,
-        );
-    const ot = Math.max(0, total - standard);
+    const brk = isDayOff ? 0 : parseInt(breakMinutes) || 0;
+    const total = isDayOff ? 0 : calculateHours(startTime, endTime, brk);
+    const ot = isDayOff ? 0 : (isWholeDayOT ? total : 0);
 
     const existingLog = logs.find((l) => l.date === selectedDate);
     const idToUpdate = editingLogId || (existingLog ? existingLog.id : null);
@@ -648,6 +651,8 @@ export default function App() {
         breakMinutes: brk,
         totalHours: Number(total.toFixed(2)),
         overtimeHours: Number(ot.toFixed(2)),
+        isDayOff,
+        isWholeDayOT,
       };
 
       if (user) {
@@ -675,6 +680,8 @@ export default function App() {
         );
       }
       setEditingLogId(null);
+      setIsDayOff(false);
+      setIsWholeDayOT(false);
     } else {
       const newId = crypto.randomUUID();
       const newLogData = {
@@ -685,6 +692,8 @@ export default function App() {
         breakMinutes: brk,
         totalHours: Number(total.toFixed(2)),
         overtimeHours: Number(ot.toFixed(2)),
+        isDayOff,
+        isWholeDayOT,
         timestamp: Date.now(),
       };
 
@@ -720,6 +729,9 @@ export default function App() {
     setStartTime(log.startTime);
     setEndTime(log.endTime);
     setBreakMinutes(log.breakMinutes.toString());
+    setIsDayOff(!!log.isDayOff);
+    setIsWholeDayOT(!!log.isWholeDayOT);
+    setView("entry");
   };
 
   const deleteLog = async (id: string, e: MouseEvent) => {
@@ -755,12 +767,14 @@ export default function App() {
       "Break (Min)",
       "Total Hours",
       "Overtime Hours",
+      "Day Off",
+      "Whole Day OT",
     ];
     const csvContent = [
       headers.join(","),
       ...filteredLogs.map(
         (log) =>
-          `${log.date},${log.startTime},${log.endTime},${log.breakMinutes},${log.totalHours},${log.overtimeHours || 0}`,
+          `${log.date},${log.startTime},${log.endTime},${log.breakMinutes},${log.totalHours},${log.overtimeHours || 0},${log.isDayOff ? "Yes" : "No"},${log.isWholeDayOT ? "Yes" : "No"}`,
       ),
     ].join("\n");
 
@@ -915,9 +929,12 @@ export default function App() {
 
   const openDate = (dateString: string) => {
     setSelectedDate(dateString);
+    setEditingLogId(null);
     setStartTime(defaultStartTime);
     setEndTime(defaultEndTime);
     setBreakMinutes(defaultBreakMinutes);
+    setIsDayOff(false);
+    setIsWholeDayOT(false);
     setView("entry");
   };
 
@@ -1175,10 +1192,12 @@ export default function App() {
                       dayDate && dayDate.getDate() === payPeriodStartDay;
                     const isFirstDayOfMonth =
                       dayDate && dayDate.getDate() === 1;
-                    const isOtDay = dateStr
-                      ? otDays.includes(parseLocalDate(dateStr).getDay())
-                      : false;
-                    const dayLogs = dateStr ? logsByDate[dateStr] : [];
+                    const isOtDay = false; // Legacy automatic OT days removed
+                    const dayLogs = dateStr ? (logsByDate[dateStr] || []) : [];
+                    const isManualDayOff = dayLogs.some((l) => l.isDayOff);
+                    const isManualWholeDayOT = dayLogs.some(
+                      (l) => l.isWholeDayOT,
+                    );
                     const totalForDay = dayLogs?.reduce(
                       (sum, l) => sum + l.totalHours,
                       0,
@@ -1193,6 +1212,7 @@ export default function App() {
                               ${!dateStr ? "bg-slate-50/50 dark:bg-slate-800/50 pointer-events-none" : ""}
                               ${isToday ? "bg-indigo-50/30 dark:bg-indigo-900/20" : ""}
                               ${isOtDay && !isToday && dateStr ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}
+                              ${isManualDayOff ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-900/30" : ""}
                               ${isFirstDayOfMonth ? "ring-1 ring-inset ring-slate-200 dark:ring-slate-700/50" : ""}
                           `}
                       >
@@ -1201,7 +1221,7 @@ export default function App() {
                             <div className="flex justify-between items-start">
                               <div className="flex flex-col items-start leading-none gap-0.5">
                                 <span
-                                  className={`text-sm font-bold ${isToday ? "text-indigo-600 dark:text-indigo-400" : "text-slate-600 dark:text-slate-300"}`}
+                                  className={`text-sm font-bold ${isToday ? "text-indigo-600 dark:text-indigo-400" : isManualDayOff ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-300"}`}
                                 >
                                   {dayDate.getDate()}
                                 </span>
@@ -1211,7 +1231,7 @@ export default function App() {
                                   </span>
                                 )}
                               </div>
-                              {isOtDay && (
+                              {(isOtDay || isManualWholeDayOT) && (
                                 <span
                                   className={`font-black uppercase text-amber-500/60 dark:text-amber-600/40 ${lang === "ar" ? "text-[8px]" : "text-[8px] tracking-wider"}`}
                                 >
@@ -1229,8 +1249,18 @@ export default function App() {
                               </div>
                             )}
 
+                            {isManualDayOff && (
+                              <div
+                                className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10 p-1"
+                              >
+                                <span className="text-[10px] sm:text-xs font-black text-rose-600/90 dark:text-rose-400/90 tracking-tight text-center uppercase break-words leading-tight">
+                                  {t.dayOff}
+                                </span>
+                              </div>
+                            )}
+
                             <div className="mt-auto flex flex-col items-start gap-1">
-                              {dayLogs && dayLogs.length > 0 && (
+                              {dayLogs && dayLogs.length > 0 && !isManualDayOff && (
                                 <>
                                   <div className="flex flex-col gap-1 w-full items-start">
                                     <span className="text-[9px] sm:text-xs font-bold text-indigo-100 bg-indigo-600 dark:bg-indigo-600 px-1.5 py-0.5 rounded-full inline-flex items-center leading-none border border-indigo-700 shadow-sm">
@@ -1306,14 +1336,14 @@ export default function App() {
 
                 const totalThisPeriod = logs
                   .filter(
-                    (l) => l.date >= startDisplayStr && l.date < endSearchStr,
+                    (l) => l.date >= startDisplayStr && l.date < endSearchStr && !l.isDayOff,
                   )
                   .reduce((sum, l) => sum + l.totalHours, 0)
                   .toFixed(1);
 
                 const otThisPeriod = logs
                   .filter(
-                    (l) => l.date >= startDisplayStr && l.date < endSearchStr,
+                    (l) => l.date >= startDisplayStr && l.date < endSearchStr && !l.isDayOff,
                   )
                   .reduce((sum, l) => sum + (l.overtimeHours || 0), 0)
                   .toFixed(1);
@@ -1321,15 +1351,20 @@ export default function App() {
                 const daysWorkedThisPeriod = new Set(
                   logs
                     .filter(
-                      (l) => l.date >= startDisplayStr && l.date < endSearchStr,
+                      (l) => l.date >= startDisplayStr && l.date < endSearchStr && !l.isDayOff,
                     )
                     .map((l) => l.date),
                 ).size;
 
+                const totalDaysOffThisPeriod = logs
+                  .filter(
+                    (l) => l.date >= startDisplayStr && l.date < endSearchStr && l.isDayOff,
+                  ).length;
+
                 return (
                   <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 dark:shadow-none relative overflow-hidden">
                     <div className="relative z-10">
-                      <p className="text-indigo-100 text-xs font-semibold uppercase tracking-wider mb-1">
+                      <p className="text-indigo-100 text-[10px] font-bold uppercase tracking-[0.2em] mb-4 bg-indigo-700/50 w-fit px-3 py-1 rounded-lg border border-indigo-400/20">
                         {title} (
                         {lang === "ar"
                           ? `${startDate.getDate()} ${t.months[startDate.getMonth()]}`
@@ -1346,31 +1381,49 @@ export default function App() {
                             })}
                         )
                       </p>
-                      <p className="text-4xl font-black">
-                        {totalThisPeriod}
-                        <span className="text-sm ml-2 font-normal opacity-70 rtl:mr-2">
-                          {lang === "ar" ? "ساعة" : "Hours"}
-                        </span>
-                      </p>
-                      <div className="flex items-center gap-6 mt-3 border-t border-indigo-500/50 pt-3 flex-wrap">
-                        <p className="text-indigo-200 font-bold text-sm">
-                          {lang === "ar"
-                            ? "إجمالي الساعات الإضافية"
-                            : "Overtime Total"}
-                          : {otThisPeriod} {lang === "ar" ? "ساعة" : "Hours"}
-                        </p>
-                        <p className="text-indigo-200 font-bold text-sm">
-                          {lang === "ar"
-                            ? "إجمالي أيام العمل"
-                            : "Total Work Days"}
-                          : {daysWorkedThisPeriod}
-                        </p>
+
+                      <div className="grid grid-cols-2 divide-x divide-indigo-400/30 rtl:divide-x-reverse">
+                        <div className="flex flex-col pr-4 sm:pr-6 rtl:pr-0 rtl:pl-4 sm:rtl:pl-6">
+                          <span className="text-indigo-200 text-[10px] font-black uppercase tracking-widest mb-2 truncate opacity-80">
+                            {lang === "ar" ? "إجمالي الساعات" : "Total Hours"}
+                          </span>
+                          <p className="text-3xl sm:text-4xl font-black tracking-tight leading-none">
+                            {totalThisPeriod}
+                            <span className="text-xs ml-1.5 font-bold opacity-60 rtl:mr-1.5">
+                              {lang === "ar" ? "ساعة" : "Hrs"}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="flex flex-col pl-4 sm:pl-6 rtl:pl-0 rtl:pr-4 sm:rtl:pr-6 text-indigo-50">
+                          <span className="text-indigo-200 text-[10px] font-black uppercase tracking-widest mb-2 truncate opacity-80">
+                            {t.overtimeTotal}
+                          </span>
+                          <p className="text-3xl sm:text-4xl font-black tracking-tight leading-none">
+                            {otThisPeriod}
+                            <span className="text-xs ml-1.5 font-bold opacity-60 rtl:mr-1.5">
+                              {lang === "ar" ? "ساعة" : "Hrs"}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-x-8 gap-y-2 mt-6 border-t border-indigo-400/30 pt-4 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <p className="text-indigo-100 font-bold text-sm">
+                            {t.totalWorkDays}: <span className="text-white">{daysWorkedThisPeriod}</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-indigo-100 font-bold text-sm">
+                            {t.totalDaysOff}: <span className="text-white">{totalDaysOffThisPeriod}</span>
+                          </p>
+                        </div>
                       </div>
                     </div>
                     <div
-                      className={`absolute top-0 ${lang === "ar" ? "left-0" : "right-0"} p-4 opacity-10 pointer-events-none`}
+                      className={`absolute top-0 ${lang === "ar" ? "left-0" : "right-0"} p-4 opacity-10 pointer-events-none transform translate-y-2`}
                     >
-                      <History size={80} />
+                      <History size={100} />
                     </div>
                   </div>
                 );
@@ -1409,7 +1462,45 @@ export default function App() {
                   })()}
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                {/* Quick Actions */}
+                <div className="grid grid-cols-2 gap-4 mb-8 relative z-10">
+                  <button
+                    onClick={() => {
+                      setIsDayOff(!isDayOff);
+                      if (!isDayOff) setIsWholeDayOT(false);
+                    }}
+                    className={`group relative flex flex-col items-center justify-center gap-3 p-5 rounded-3xl border-2 transition-all duration-300 overflow-hidden ${
+                      isDayOff
+                        ? "bg-rose-500 border-rose-500 text-white shadow-xl shadow-rose-200 dark:shadow-none ring-2 ring-rose-500 ring-offset-2 dark:ring-offset-slate-950"
+                        : "bg-white border-slate-100 text-slate-500 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800 hover:border-rose-300 hover:bg-rose-50/50 dark:hover:bg-rose-900/10"
+                    }`}
+                  >
+                    <div className={`p-4 rounded-2xl transition-all duration-300 transform group-hover:scale-110 ${isDayOff ? "bg-white/20" : "bg-rose-50 dark:bg-rose-900/30 text-rose-500"}`}>
+                      <Palmtree size={32} className={isDayOff ? "text-white" : "text-rose-500"} />
+                    </div>
+                    <span className="font-bold text-xs uppercase tracking-[0.2em]">{t.dayOff}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsWholeDayOT(!isWholeDayOT);
+                      if (!isWholeDayOT) setIsDayOff(false);
+                    }}
+                    className={`group relative flex flex-col items-center justify-center gap-3 p-5 rounded-3xl border-2 transition-all duration-300 overflow-hidden ${
+                      isWholeDayOT
+                        ? "bg-amber-500 border-amber-500 text-white shadow-xl shadow-amber-200 dark:shadow-none ring-2 ring-amber-500 ring-offset-2 dark:ring-offset-slate-950"
+                        : "bg-white border-slate-100 text-slate-500 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800 hover:border-amber-300 hover:bg-amber-50/50 dark:hover:bg-amber-900/10"
+                    }`}
+                  >
+                    <div className={`p-4 rounded-2xl transition-all duration-300 transform group-hover:scale-110 ${isWholeDayOT ? "bg-white/20" : "bg-amber-50 dark:bg-amber-900/30 text-amber-500"}`}>
+                      <Flag size={32} className={isWholeDayOT ? "text-white" : "text-amber-500"} />
+                    </div>
+                    <span className="font-bold text-xs uppercase tracking-[0.2em]">{t.otDayWhole}</span>
+                  </button>
+                </div>
+
+                <div
+                  className={`grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10 transition-all ${isDayOff ? "opacity-30 pointer-events-none grayscale" : "opacity-100"}`}
+                >
                   <div className="space-y-2 text-left rtl:text-right">
                     <label
                       htmlFor="breakMinutes"
@@ -1469,22 +1560,16 @@ export default function App() {
                 <div className="mt-10 pt-8 border-t border-slate-50 dark:border-slate-700/50 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
                   <div className="text-center md:text-left rtl:md:text-right">
                     {(() => {
-                      const totalTemp = calculateHours(
-                        startTime,
-                        endTime,
-                        parseInt(breakMinutes) || 0,
-                      );
-                      const isOtDayPreview = otDays.includes(
-                        parseLocalDate(selectedDate).getDay(),
-                      );
-                      const standardTemp = isOtDayPreview
+                      const totalTemp = isDayOff
                         ? 0
                         : calculateHours(
-                            defaultStartTime,
-                            defaultEndTime,
-                            parseInt(defaultBreakMinutes) || 0,
+                            startTime,
+                            endTime,
+                            parseInt(breakMinutes) || 0,
                           );
-                      const otTemp = Math.max(0, totalTemp - standardTemp);
+                      const otTemp = isDayOff
+                        ? 0
+                        : (isWholeDayOT ? totalTemp : 0);
 
                       return (
                         <>
@@ -1557,12 +1642,21 @@ export default function App() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">
-                                {log.startTime} - {log.endTime}
+                                {log.isDayOff
+                                  ? t.dayOff
+                                  : `${log.startTime} - ${log.endTime}`}
                               </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
-                                  {log.breakMinutes}m break
-                                </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-1">
+                                {!log.isDayOff && (
+                                  <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
+                                    {log.breakMinutes}m break
+                                  </p>
+                                )}
+                                {log.isWholeDayOT && (
+                                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                                    {t.otDayWhole}
+                                  </span>
+                                )}
                                 {log.overtimeHours ? (
                                   <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                                     {log.overtimeHours}h OT
@@ -1841,37 +1935,6 @@ export default function App() {
                         }
                         className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                       />
-                    </div>
-                    <div className="space-y-2 text-left rtl:text-right">
-                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {t.overtimeThreshold}
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {t.days.map((day, index) => (
-                          <label
-                            key={day}
-                            className="flex items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent has-[:checked]:border-indigo-500/30 has-[:checked]:bg-indigo-50/50 dark:has-[:checked]:bg-indigo-900/20"
-                          >
-                            <input
-                              type="checkbox"
-                              name="otDays"
-                              checked={otDays.includes(index)}
-                              onChange={(e) => {
-                                if (e.target.checked)
-                                  setOtDays((prev) => [...prev, index]);
-                                else
-                                  setOtDays((prev) =>
-                                    prev.filter((d) => d !== index),
-                                  );
-                              }}
-                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                            />
-                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                              {day}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
                     </div>
                   </div>
                 </div>

@@ -48,39 +48,44 @@ getRedirectResult(auth).then((result) => {
 });
 
 export const signInWithGoogle = async () => {
+    console.log("signInWithGoogle called");
     try {
-        // Try popup first as it is more reliable for state persistence on mobile Chrome 
-        // if the user has popups enabled or handles the "Popup blocked" prompt.
+        // First check storage access
+        const storageOk = await checkStorageAccess();
+        console.log("Storage access check:", storageOk);
+        
+        // Try popup first
+        console.log("Attempting signInWithPopup...");
         try {
-            await signInWithPopup(auth, googleProvider);
+            const result = await signInWithPopup(auth, googleProvider);
+            console.log("signInWithPopup success:", result.user.email);
         } catch (popupError: any) {
+            console.warn("signInWithPopup failed:", popupError.code, popupError.message);
+            
             // If popup is blocked or fails, then try redirect as a fallback
-            if (popupError?.code === 'auth/popup-blocked' || popupError?.code === 'auth/cancelled-popup-request') {
-                console.log("Popup blocked, falling back to redirect...");
-                await signInWithRedirect(auth, googleProvider);
+            if (popupError?.code === 'auth/popup-blocked' || 
+                popupError?.code === 'auth/cancelled-popup-request' ||
+                popupError?.code === 'auth/internal-error' ||
+                popupError?.message?.includes('closed by user')) {
+                console.log("Falling back to signInWithRedirect...");
+                try {
+                    await signInWithRedirect(auth, googleProvider);
+                } catch (redirectError: any) {
+                    console.error("signInWithRedirect failed:", redirectError);
+                    alert("Sign-in failed. Please try opening the app in a new tab using the icon at the top right.");
+                    throw redirectError;
+                }
             } else {
+                if (popupError?.code === 'auth/unauthorized-domain') {
+                    alert("Unauthorized domain. This usually means the current preview URL needs to be added to Firebase Console -> Authentication -> Settings -> Authorized Domains. Current URL: " + window.location.hostname);
+                } else {
+                    alert("Sign-in error: " + (popupError?.message || popupError));
+                }
                 throw popupError;
             }
         }
     } catch (error: any) {
-        if (error?.code === 'auth/popup-closed-by-user') {
-            console.log("Sign in popup was closed by the user.");
-            return;
-        }
-        if (error?.code === 'auth/unauthorized-domain') {
-            alert("This domain is not authorized for Firebase Auth. Please add it in the Firebase Console Settings -> Authentication -> Authorized domains.");
-            return;
-        }
-        
-        // Detailed error for typical iframe/mobile issues
-        const isIframe = window.self !== window.top;
-        if (isIframe || error?.message?.includes('Cross-Origin')) {
-             alert('Authentication failed. If you are using a mobile device or a restricted browser, please click the "Open in new tab" icon (top right) or ensure third-party cookies are allowed.');
-        } else {
-             alert("Sign-in error: " + error.code + " - " + error.message);
-        }
-        
-        console.error("Error signing in with Google", error);
+        console.error("Final sign-in error", error);
         throw error;
     }
 };
