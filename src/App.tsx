@@ -203,6 +203,11 @@ export default function App() {
       return localStorage.getItem("hourlyRate") || "";
     return "";
   });
+  const [dailyStandardHours, setDailyStandardHours] = useState<string>(() => {
+    if (typeof window !== "undefined")
+      return localStorage.getItem("dailyStandardHours") || "8";
+    return "8";
+  });
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [endTime, setEndTime] = useState(defaultEndTime);
   const [breakMinutes, setBreakMinutes] = useState<string>(defaultBreakMinutes);
@@ -373,6 +378,11 @@ export default function App() {
             setHourlyRate(hrValue);
             localStorage.setItem("hourlyRate", hrValue);
           }
+          if (data.dailyStandardHours !== undefined) {
+            const dshValue = data.dailyStandardHours?.toString() || "8";
+            setDailyStandardHours(dshValue);
+            localStorage.setItem("dailyStandardHours", dshValue);
+          }
         }
       },
       (error) =>
@@ -401,6 +411,7 @@ export default function App() {
         reminderTime,
         calendarViewMode,
         hourlyRate: hourlyRate === "" ? null : parseFloat(hourlyRate),
+        dailyStandardHours: dailyStandardHours === "" ? 8 : parseFloat(dailyStandardHours),
       },
       { merge: true },
     ).catch((error) =>
@@ -432,6 +443,11 @@ export default function App() {
     if (!user && !authLoading)
       localStorage.setItem("hourlyRate", hourlyRate);
   }, [hourlyRate, user, authLoading]);
+
+  useEffect(() => {
+    if (!user && !authLoading)
+      localStorage.setItem("dailyStandardHours", dailyStandardHours);
+  }, [dailyStandardHours, user, authLoading]);
 
   useEffect(() => {
     if (!user && !authLoading)
@@ -625,6 +641,7 @@ export default function App() {
             calendarViewMode,
           ) as "month" | "cycle",
           hourlyRate: getLocalSetting("hourlyRate", hourlyRate, (v) => v === "" ? null : parseFloat(v)),
+          dailyStandardHours: getLocalSetting("dailyStandardHours", dailyStandardHours, (v) => v === "" ? 8 : parseFloat(v)),
         },
         { merge: true },
       );
@@ -656,7 +673,8 @@ export default function App() {
   const handleSave = async () => {
     const brk = isDayOff ? 0 : parseInt(breakMinutes) || 0;
     const total = isDayOff ? 0 : calculateHours(startTime, endTime, brk);
-    const ot = isDayOff ? 0 : (isWholeDayOT ? total : 0);
+    const dsh = parseFloat(dailyStandardHours) || 8;
+    const ot = isDayOff ? 0 : (isWholeDayOT ? total : Math.max(0, total - dsh));
 
     const existingLog = logs.find((l) => l.date === selectedDate);
     const idToUpdate = editingLogId || (existingLog ? existingLog.id : null);
@@ -1359,11 +1377,18 @@ export default function App() {
                   .reduce((sum, l) => sum + l.totalHours, 0)
                   .toFixed(1);
 
+                const dshNum = parseFloat(dailyStandardHours) || 8;
                 const otThisPeriod = logs
                   .filter(
                     (l) => l.date >= startDisplayStr && l.date < endSearchStr && !l.isDayOff,
                   )
-                  .reduce((sum, l) => sum + (l.overtimeHours || 0), 0)
+                  .reduce((sum, l) => {
+                    if (l.isWholeDayOT) return sum + l.totalHours;
+                    // If log has overtimeHours set (new logs), use it.
+                    // Otherwise, calculate on the fly for better backward compatibility.
+                    if (l.overtimeHours !== undefined && l.overtimeHours > 0) return sum + l.overtimeHours;
+                    return sum + Math.max(0, l.totalHours - dshNum);
+                  }, 0)
                   .toFixed(1);
 
                 const daysWorkedThisPeriod = new Set(
@@ -1602,9 +1627,10 @@ export default function App() {
                             endTime,
                             parseInt(breakMinutes) || 0,
                           );
+                      const dsh = parseFloat(dailyStandardHours) || 8;
                       const otTemp = isDayOff
                         ? 0
-                        : (isWholeDayOT ? totalTemp : 0);
+                        : (isWholeDayOT ? totalTemp : Math.max(0, totalTemp - dsh));
 
                       return (
                         <>
@@ -1992,6 +2018,23 @@ export default function App() {
                           {t.currency}
                         </div>
                       </div>
+                    </div>
+                    <div className="space-y-2 text-left rtl:text-right">
+                      <label
+                        htmlFor="dailyStandardHours"
+                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        {t.dailyStandardHours}
+                      </label>
+                      <input
+                        id="dailyStandardHours"
+                        type="number"
+                        step="0.5"
+                        placeholder="8"
+                        value={dailyStandardHours}
+                        onChange={(e) => setDailyStandardHours(e.target.value)}
+                        className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                      />
                     </div>
                   </div>
                 </div>
