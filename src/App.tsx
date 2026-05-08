@@ -198,6 +198,11 @@ export default function App() {
       return "month";
     },
   );
+  const [hourlyRate, setHourlyRate] = useState<string>(() => {
+    if (typeof window !== "undefined")
+      return localStorage.getItem("hourlyRate") || "";
+    return "";
+  });
   const [startTime, setStartTime] = useState(defaultStartTime);
   const [endTime, setEndTime] = useState(defaultEndTime);
   const [breakMinutes, setBreakMinutes] = useState<string>(defaultBreakMinutes);
@@ -363,6 +368,11 @@ export default function App() {
             setCalendarViewMode(data.calendarViewMode);
             localStorage.setItem("calendarViewMode", data.calendarViewMode);
           }
+          if (data.hourlyRate !== undefined) {
+            const hrValue = data.hourlyRate?.toString() || "";
+            setHourlyRate(hrValue);
+            localStorage.setItem("hourlyRate", hrValue);
+          }
         }
       },
       (error) =>
@@ -390,6 +400,7 @@ export default function App() {
         isDarkMode,
         reminderTime,
         calendarViewMode,
+        hourlyRate: hourlyRate === "" ? null : parseFloat(hourlyRate),
       },
       { merge: true },
     ).catch((error) =>
@@ -409,12 +420,18 @@ export default function App() {
     isDarkMode,
     reminderTime,
     calendarViewMode,
+    hourlyRate,
   ]);
 
   useEffect(() => {
     if (!user && !authLoading)
       localStorage.setItem("calendarViewMode", calendarViewMode);
   }, [calendarViewMode, user, authLoading]);
+
+  useEffect(() => {
+    if (!user && !authLoading)
+      localStorage.setItem("hourlyRate", hourlyRate);
+  }, [hourlyRate, user, authLoading]);
 
   useEffect(() => {
     if (!user && !authLoading)
@@ -607,6 +624,7 @@ export default function App() {
             "calendarViewMode",
             calendarViewMode,
           ) as "month" | "cycle",
+          hourlyRate: getLocalSetting("hourlyRate", hourlyRate, (v) => v === "" ? null : parseFloat(v)),
         },
         { merge: true },
       );
@@ -1357,9 +1375,12 @@ export default function App() {
                 ).size;
 
                 const totalDaysOffThisPeriod = logs
-                  .filter(
-                    (l) => l.date >= startDisplayStr && l.date < endSearchStr && l.isDayOff,
-                  ).length;
+                   .filter(
+                     (l) => l.date >= startDisplayStr && l.date < endSearchStr && l.isDayOff,
+                   ).length;
+
+                const hourlyRateNum = parseFloat(hourlyRate);
+                const totalSalary = isNaN(hourlyRateNum) ? 0 : parseFloat(totalThisPeriod) * hourlyRateNum;
 
                 return (
                   <div className="bg-indigo-600 rounded-3xl p-6 text-white shadow-lg shadow-indigo-200 dark:shadow-none relative overflow-hidden">
@@ -1406,6 +1427,20 @@ export default function App() {
                           </p>
                         </div>
                       </div>
+
+                      {hourlyRateNum > 0 && (
+                        <div className="mt-6 p-4 bg-white/10 rounded-2xl border border-white/10 backdrop-blur-sm">
+                          <span className="text-indigo-200 text-[10px] font-black uppercase tracking-widest mb-1 block opacity-80">
+                            {t.totalSalary}
+                          </span>
+                          <p className="text-2xl font-black text-white flex items-baseline gap-1">
+                            {totalSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <span className="text-sm font-bold opacity-60">
+                              {t.currency}
+                            </span>
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-x-8 gap-y-2 mt-6 border-t border-indigo-400/30 pt-4 flex-wrap">
                         <div className="flex items-center gap-2">
@@ -1935,6 +1970,28 @@ export default function App() {
                         }
                         className="w-full p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
                       />
+                    </div>
+                    <div className="space-y-2 text-left rtl:text-right">
+                      <label
+                        htmlFor="hourlyRate"
+                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        {t.hourlyRate}
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="hourlyRate"
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={hourlyRate}
+                          onChange={(e) => setHourlyRate(e.target.value)}
+                          className="w-full p-4 pl-4 pr-12 rtl:pr-4 rtl:pl-12 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-semibold dark:text-white [color-scheme:light] dark:[color-scheme:dark] text-left rtl:text-right"
+                        />
+                        <div className={`absolute top-1/2 -translate-y-1/2 ${lang === "ar" ? "left-4" : "right-4"} font-bold text-slate-400`}>
+                          {t.currency}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -51,6 +51,9 @@ export const translations = {
     totalWorkDays: 'Total Work Days',
     totalDaysOff: 'Total Days Off',
     overtimeTotal: 'Overtime Total',
+    hourlyRate: 'Hourly Rate',
+    totalSalary: 'Total Salary',
+    currency: '$',
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     months: [
       'January', 'February', 'March', 'April', 'May', 'June',
@@ -106,6 +109,9 @@ export const translations = {
     totalWorkDays: 'إجمالي أيام العمل',
     totalDaysOff: 'إجمالي أيام العطلة',
     overtimeTotal: 'إجمالي الساعات الإضافية',
+    hourlyRate: 'سعر الساعة',
+    totalSalary: 'إجمالي الراتب',
+    currency: '$',
     days: ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
     months: [
       'كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران',

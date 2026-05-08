@@ -13,7 +13,8 @@
         "lang": { "type": "string" },
         "isDarkMode": { "type": "boolean" },
         "reminderTime": { "type": "string" },
-        "calendarViewMode": { "type": "string", "enum": ["month", "cycle"] }
+        "calendarViewMode": { "type": "string", "enum": ["month", "cycle"] },
+        "hourlyRate": { "type": "number" }
       },
       "required": ["payPeriodStartDay", "otDays", "defaultStartTime", "defaultEndTime", "defaultBreakMinutes", "lang", "isDarkMode", "calendarViewMode"]
     },
