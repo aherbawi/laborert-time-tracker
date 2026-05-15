@@ -218,6 +218,16 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [showSignInHelp, setShowSignInHelp] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
 
   // Migration for legacy OT days
   useEffect(() => {
@@ -1885,6 +1895,33 @@ export default function App() {
                   </div>
 
                   <div className="space-y-8">
+                    {/* App Installation */}
+                    {deferredPrompt && (
+                      <div className="space-y-4">
+                        <label className="text-sm font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest text-left rtl:text-right block">
+                          App Installation
+                        </label>
+                        <button
+                          onClick={async () => {
+                            if (deferredPrompt) {
+                              deferredPrompt.prompt();
+                              const { outcome } = await deferredPrompt.userChoice;
+                              if (outcome === 'accepted') {
+                                setDeferredPrompt(null);
+                              }
+                            }
+                          }}
+                          className="w-full flex items-center justify-between p-4 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-2xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors border border-indigo-100 dark:border-indigo-800"
+                        >
+                          <div className="flex flex-col text-left rtl:text-right">
+                            <span className="font-bold">Install Work Tracker</span>
+                            <span className="text-xs opacity-80 mt-1">Add to your home screen for quick access</span>
+                          </div>
+                          <Download size={20} />
+                        </button>
+                      </div>
+                    )}
+
                     {/* Time Settings */}
                     <div className="space-y-6">
                       <div className="space-y-2 text-left rtl:text-right">

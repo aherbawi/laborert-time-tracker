@@ -12,22 +12,27 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'clock.svg', 'apple-touch-icon.png'],
+        includeAssets: ['clock.svg'],
         manifest: {
           name: 'Work Tracker',
           short_name: 'WorkTracker',
           description: 'A simple app to track your working hours, breaks, and overtime.',
           theme_color: '#ffffff',
+          background_color: '#ffffff',
+          display: 'standalone',
+          start_url: '/',
           icons: [
             {
               src: 'clock.svg',
               sizes: '192x192',
-              type: 'image/svg+xml'
+              type: 'image/svg+xml',
+              purpose: 'any'
             },
             {
               src: 'clock.svg',
               sizes: '512x512',
-              type: 'image/svg+xml'
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
             }
           ]
         }
